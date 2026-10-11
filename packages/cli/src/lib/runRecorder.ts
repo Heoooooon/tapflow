@@ -51,6 +51,9 @@ export class RunRecorder {
   /** Aborts the call in flight when the drain gives up, so nothing keeps the process alive past the cap. */
   private readonly gaveUp = new AbortController()
   private readonly callTimeoutMs: number
+  private resolveCreated!: (id: string | null) => void
+  /** The run's id once the relay has answered the create, or null if it never will — what the video lane waits on. */
+  readonly created: Promise<string | null> = new Promise((resolve) => { this.resolveCreated = resolve })
 
   constructor(
     private readonly httpBase: string,
@@ -67,18 +70,26 @@ export class RunRecorder {
 
   create(run: { client: string; buildId?: number; flows: PlannedFlow[]; ci: CiContext | null }): void {
     this.enqueue(false, async () => {
-      const res = await this.post('/api/v1/runs', JSON.stringify({
-        client: run.client,
-        ...(run.buildId !== undefined ? { buildId: run.buildId } : {}),
-        flows: run.flows,
-        ...(run.ci ? { ci: run.ci } : {}),
-      }), 'application/json')
-      // A relay older than run records answers an unknown `/api/` POST with the dashboard's `index.html` and a
-      // 200, so "ok" is not "supported". Only an id says it was recorded.
-      const body = await res.json().catch(() => null) as { id?: unknown } | null
-      if (typeof body?.id !== 'string') throw new RecordRefused('this relay does not record runs yet (update it to record them)')
-      this.id = body.id
+      try {
+        await this.createRun(run)
+      } finally {
+        this.resolveCreated(this.id)
+      }
     })
+  }
+
+  private async createRun(run: { client: string; buildId?: number; flows: PlannedFlow[]; ci: CiContext | null }): Promise<void> {
+    const res = await this.post('/api/v1/runs', JSON.stringify({
+      client: run.client,
+      ...(run.buildId !== undefined ? { buildId: run.buildId } : {}),
+      flows: run.flows,
+      ...(run.ci ? { ci: run.ci } : {}),
+    }), 'application/json')
+    // A relay older than run records answers an unknown `/api/` POST with the dashboard's `index.html` and a
+    // 200, so "ok" is not "supported". Only an id says it was recorded.
+    const body = await res.json().catch(() => null) as { id?: unknown } | null
+    if (typeof body?.id !== 'string') throw new RecordRefused('this relay does not record runs yet (update it to record them)')
+    this.id = body.id
   }
 
   reportFlow(idx: number, report: FlowReport, screenshot?: Buffer): void {
@@ -136,6 +147,7 @@ export class RunRecorder {
       this.stopped = true
       // A call still waiting on its own deadline would hold the process open past the cap.
       this.gaveUp.abort()
+      this.resolveCreated(this.id)
       if (!warned) this.deps.warn(`run record incomplete: the relay did not answer within ${Math.round(capMs / 1000)}s`)
     }
     return { runId: this.id, complete: !this.stopped }

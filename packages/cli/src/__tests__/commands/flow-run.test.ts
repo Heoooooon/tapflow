@@ -19,9 +19,12 @@ const mocks = vi.hoisted(() => ({
   installApp: vi.fn(async () => {}),
   leaveSession: vi.fn(() => {}),
   disconnect: vi.fn(() => {}),
+  setStreamListener: vi.fn(),
 }))
 
-vi.mock('@tapflowio/flow-runner', () => ({
+vi.mock('@tapflowio/flow-runner', async (importOriginal) => ({
+  // The real tap: these tests feed it frames and check what reaches the relay.
+  VideoTap: (await importOriginal<typeof import('@tapflowio/flow-runner')>()).VideoTap,
   parseFlow: mocks.parseFlow,
   runFlow: mocks.runFlow,
   toJUnitXml: mocks.toJUnitXml,
@@ -34,6 +37,7 @@ vi.mock('@tapflowio/flow-runner', () => ({
     installApp = mocks.installApp
     leaveSession = mocks.leaveSession
     disconnect = mocks.disconnect
+    setStreamListener = mocks.setStreamListener
   },
   RelayDriver: class {
     constructor(..._args: unknown[]) {}
@@ -41,7 +45,14 @@ vi.mock('@tapflowio/flow-runner', () => ({
 }))
 
 import { cmdFlowRun } from '../../commands/flow-run.js'
-import type { FlowResult } from '@tapflowio/flow-runner'
+import type { FlowResult, StreamListener } from '@tapflowio/flow-runner'
+import { CODEC_H264, writeEnvelopeHeader } from '@tapflowio/agent-core/utils'
+
+const IDR = writeEnvelopeHeader(Buffer.from([0, 0, 0, 1, 0x67, 1, 0, 0, 0, 1, 0x68, 1, 0, 0, 0, 1, 0x65, 9]), 1, { codec: CODEC_H264, keyframe: true })
+const PFRAME = writeEnvelopeHeader(Buffer.from([0, 0, 0, 1, 0x41, 9]), 2, { codec: CODEC_H264, keyframe: false })
+
+/** The stream listener the run installed, so a test can play the device's frames into it. */
+const streamListener = (): StreamListener => mocks.setStreamListener.mock.calls.find(([l]) => l !== null)![0] as StreamListener
 
 function resultOf(status: 'passed' | 'failed', failureKind?: 'environment' | 'product'): FlowResult {
   return {
@@ -398,6 +409,116 @@ describe('cmdFlowRun records the run on the relay (A3)', () => {
     expect(mocks.leaveSession.mock.invocationCallOrder[0]!).toBeLessThan(finishAt)
     expect(mocks.disconnect.mock.invocationCallOrder[0]!).toBeGreaterThan(finishAt)
     // The run never reaches its `finally`, so its handlers are still installed; remove only those.
+    for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+      for (const l of process.listeners(sig)) if (!before[sig].includes(l)) process.off(sig, l)
+    }
+  })
+})
+
+describe('cmdFlowRun keeps each flow\'s video beside the record (A4)', () => {
+  let dir: string
+  let file: string
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tapflow-flow-video-'))
+    file = path.join(dir, 'login.yaml')
+    fs.writeFileSync(file, 'steps: []\n')
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    process.exitCode = undefined
+    vi.stubEnv('TAPFLOW_TOKEN', '')
+    for (const name of ['CI', 'JENKINS_URL', 'TF_BUILD', 'GITHUB_ACTIONS']) vi.stubEnv(name, '')
+    mocks.listDevices.mockResolvedValue([
+      { devices: [{ sessionId: 's1', name: 'dev', status: 'booted', busy: false, id: 'dev1', platform: 'ios' }] },
+    ])
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+    process.exitCode = undefined
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  const videoCalls = (calls: { url: string; body: unknown }[]) =>
+    calls.filter((c) => c.url.includes('/video')).map((c) => c.url.replace('http://localhost:4000/api/v1/runs/run-1/flows/', ''))
+
+  it('asks for H.264 and reads the stream only when the run is recorded', async () => {
+    fakeRelay()
+    mocks.runFlow.mockResolvedValue(resultOf('passed'))
+    await cmdFlowRun([file], { token: 'tflw_pat_x' })
+    expect(mocks.bootDevice).toHaveBeenLastCalledWith('s1', 'dev1', { acceptH264: true })
+    expect(mocks.setStreamListener.mock.calls.map(([l]) => l === null)).toEqual([false, true])
+
+    vi.clearAllMocks()
+    await cmdFlowRun([file], { token: 'tflw_pat_x', record: false })
+    expect(mocks.bootDevice).toHaveBeenLastCalledWith('s1', 'dev1', { acceptH264: false })
+    expect(mocks.setStreamListener.mock.calls.filter(([l]) => l !== null)).toEqual([])
+  })
+
+  it('sends each flow\'s frames as its video, with the step marks, and ends it', async () => {
+    const relay = fakeRelay()
+    mocks.runFlow.mockImplementation(async (_flow: unknown, _driver: unknown, opts: { onStep?: (m: unknown) => void }) => {
+      const tap = streamListener()
+      tap.frame(IDR)
+      opts.onStep?.({ index: 0, name: 'tap', phase: 'start' })
+      tap.frame(PFRAME)
+      return { ...resultOf('failed', 'product'), failureScreenshot: Buffer.from('png') }
+    })
+    await cmdFlowRun([file, file], { token: 'tflw_pat_x' })
+
+    // The second flow's video starts with the frames since the first one's last keyframe, so its own keyframe
+    // opens a second chunk.
+    expect(videoCalls(relay.calls)).toEqual([
+      '0/video/open', '0/video/chunks/0', '0/video/end',
+      '1/video/open', '1/video/chunks/0', '1/video/chunks/1', '1/video/end',
+    ])
+    const open = relay.calls.find((c) => c.url.endsWith('/0/video/open'))!.body as Record<string, unknown>
+    expect(open).toMatchObject({ formatVersion: 1, codec: 'h264', platform: 'ios' })
+    const chunk = relay.calls.find((c) => c.url.endsWith('/0/video/chunks/0'))!.body as Uint8Array
+    expect(Buffer.from(chunk).includes(Buffer.from('"type":"step"'))).toBe(true)
+    expect(relay.calls.find((c) => c.url.endsWith('/0/video/end'))!.body).toEqual({ lastSeq: 0, reason: 'done' })
+    // The record is unchanged by its video.
+    expect(relay.calls.filter((c) => !c.url.includes('/video')).map((c) => c.url.replace('http://localhost:4000', ''))).toEqual([
+      '/api/v1/runs',
+      '/api/v1/runs/run-1/flows/0', '/api/v1/runs/run-1/flows/0/screenshot',
+      '/api/v1/runs/run-1/flows/1', '/api/v1/runs/run-1/flows/1/screenshot',
+      '/api/v1/runs/run-1/finish',
+    ])
+    expect(process.exitCode).toBe(1)
+  })
+
+  it('never changes the result when the relay refuses video', async () => {
+    const relay = fakeRelay((url) => (url.includes('/video') ? Response.json({ error: 'no' }, { status: 500 }) : defaultAnswer(url)))
+    mocks.runFlow.mockImplementation(async () => {
+      streamListener().frame(IDR)
+      return resultOf('passed')
+    })
+    await cmdFlowRun([file], { token: 'tflw_pat_x' })
+    expect(process.exitCode).toBe(0)
+    expect(relay.calls.some((c) => c.url.endsWith('/finish'))).toBe(true)
+    expect(vi.mocked(console.error).mock.calls.map(([l]) => String(l))).toEqual([expect.stringContaining('video stopped: the relay answered 500')])
+  })
+
+  it('on SIGINT ends the flow\'s video as cancelled, after finishing the record', async () => {
+    const relay = fakeRelay()
+    const before = { SIGINT: process.listeners('SIGINT'), SIGTERM: process.listeners('SIGTERM') }
+    let exited: (code: number) => void = () => {}
+    const exitCode = new Promise<number>((resolve) => { exited = resolve })
+    vi.spyOn(process, 'exit').mockImplementation(((code: number) => { exited(code) }) as never)
+    mocks.runFlow.mockImplementation(() => {
+      streamListener().frame(IDR)
+      process.emit('SIGINT', 'SIGINT')
+      return new Promise(() => {})
+    })
+    void cmdFlowRun([file], { token: 'tflw_pat_x' })
+
+    expect(await exitCode).toBe(130)
+    expect(relay.calls.find((c) => c.url.endsWith('/0/video/end'))!.body).toEqual({ lastSeq: 0, reason: 'cancelled' })
+    expect(relay.calls.some((c) => c.url.endsWith('/finish'))).toBe(true)
     for (const sig of ['SIGINT', 'SIGTERM'] as const) {
       for (const l of process.listeners(sig)) if (!before[sig].includes(l)) process.off(sig, l)
     }

@@ -77,9 +77,9 @@ export type ClientKind = 'dashboard' | AiClientKind
 
 /** The `session:deviceInfo` payload.
  *
- *  **Nothing reads it.** Both agents send it and the relay caches and replays it on join, but no consumer
- *  in this repo takes the value — the dashboard shows device name and OS from `agents:listed`
- *  (`DeviceSummary`) instead. This comment used to claim "what the viewer shows in its info card", which
+ *  **Nothing displays it.** Both agents send it and the relay caches and replays it on join; the flow runner
+ *  copies it into a run's video beside the chrome (A4), and nothing reads it back yet — the dashboard shows
+ *  device name and OS from `agents:listed` (`DeviceSummary`) instead. This comment used to claim "what the viewer shows in its info card", which
  *  was the kind of false statement about a consumer that this package exists to remove; L6 found it while
  *  classifying every browser-inbound message. Kept on the wire because third-party agents send it. */
 export interface DeviceDetails {

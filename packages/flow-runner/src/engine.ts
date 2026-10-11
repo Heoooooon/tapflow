@@ -27,6 +27,8 @@ export interface EngineOptions {
    * the CLI turns it on while it is recording the run.
    */
   captureLastScreen?: boolean
+  /** Told as each step starts and ends — the run's video marks its timeline with them. Must not throw. */
+  onStep?: (mark: { index: number; name: string; phase: 'start' | 'end'; status?: 'passed' | 'failed' }) => void
 }
 
 export interface StepResult {
@@ -324,14 +326,17 @@ export async function runFlow(flow: Flow, driver: FlowDriver, options: EngineOpt
       continue
     }
     const stepStart = Date.now()
+    options.onStep?.({ index, name, phase: 'start' })
     try {
       await executeStep(step, flow, driver, timeoutMs, pollIntervalMs)
       steps.push({ index, name, status: 'passed', durationMs: Date.now() - stepStart })
+      options.onStep?.({ index, name, phase: 'end', status: 'passed' })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       failureMessage = `${name}: ${message}`
       if (failureKind === undefined) failureKind = isEnvironmentStepFailure(e) ? 'environment' : 'product'
       steps.push({ index, name, status: 'failed', durationMs: Date.now() - stepStart, message })
+      options.onStep?.({ index, name, phase: 'end', status: 'failed' })
       failureScreenshot = await captureScreenshot(driver, FAILURE_SCREENSHOT_TIMEOUT_MS)
     }
   }
