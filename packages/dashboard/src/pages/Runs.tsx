@@ -23,6 +23,8 @@ const FLOW_SEARCH_DEBOUNCE_MS = 300
 
 type Source = 'ci' | 'local' | 'all'
 const STATUSES: RunStatus[] = ['running', 'passed', 'failed', 'aborted']
+/** Newer's target on a page that came back empty or failed: the newest page, which needs no cursor. */
+const NEWEST = 'newest'
 
 /**
  * **What `tapflow flow run` did, for the whole team.** CI runs by default: those are the tests the team handed to
@@ -87,6 +89,7 @@ export function Runs() {
     refetchInterval: (query) => pollWhileRunning(query.state.data?.items.map((r) => r.status)),
   })
   const runs = runsQuery.data?.items
+  const onAPage = Boolean(cursor.before || cursor.after)
   // **A failed filter being fetched again is still the failure**, as App Center holds it (see there): a retry puts
   // the key back to pending, `keepPreviousData` fills it with the previous filter's rows, and the view would turn
   // into a list of runs that do not match the filters on screen — with focus moved into them. `isFetchedAfterMount`
@@ -165,7 +168,7 @@ export function Runs() {
               view={view}
               colSpan={6}
               noun="flow runs"
-              emptyText={emptyText(source, Boolean(status || flow || build !== undefined))}
+              emptyText={onAPage ? 'No runs on this page any more. Newer goes back to the newest runs.' : emptyText(source, Boolean(status || flow || build !== undefined))}
               onRetry={() => void runsQuery.refetch()}
             />
             {view === 'list' && runs?.map((run) => <RunRow key={run.id} run={run} />)}
@@ -173,12 +176,22 @@ export function Runs() {
         </Table>
       </div>
 
-      {(runsQuery.data?.prevCursor || runsQuery.data?.nextCursor) && (
+      {/* **Kept while the URL names a page**, even one that came back empty or failed: the button just pressed
+          would otherwise leave the DOM with focus on it, and a page emptied by expiry (or a stale shared link) would
+          have no way back. There, Newer goes to the newest page. While the next page loads the buttons still hold
+          this page's cursors, so they wait — a second click would push the same page twice. */}
+      {(onAPage || runsQuery.data?.prevCursor || runsQuery.data?.nextCursor) && (
         <nav aria-label="Pages of flow runs" className="flex items-center gap-2">
-          <PageButton cursor={runsQuery.data.prevCursor} onGo={(c) => goToPage({ after: c })}>
+          <PageButton
+            cursor={runsQuery.isPlaceholderData ? null : runsQuery.data?.prevCursor ?? (onAPage && !runs?.length ? NEWEST : null)}
+            onGo={(c) => goToPage(c === NEWEST ? {} : { after: c })}
+          >
             <ChevronLeft className="mr-1 h-3.5 w-3.5" aria-hidden />Newer
           </PageButton>
-          <PageButton cursor={runsQuery.data.nextCursor} onGo={(c) => goToPage({ before: c })}>
+          <PageButton
+            cursor={runsQuery.isPlaceholderData ? null : runsQuery.data?.nextCursor ?? null}
+            onGo={(c) => goToPage({ before: c })}
+          >
             Older<ChevronRight className="ml-1 h-3.5 w-3.5" aria-hidden />
           </PageButton>
         </nav>

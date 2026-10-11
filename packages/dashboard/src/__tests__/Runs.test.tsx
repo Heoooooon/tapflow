@@ -177,6 +177,31 @@ describe('Runs list', () => {
     expect(probe.location).toBe('/automation/runs?after=40')
   })
 
+  it('keeps a way back from a page that came back empty', async () => {
+    stubRelay((url) => url.includes('before=')
+      ? Response.json({ items: [], nextCursor: null, prevCursor: null })
+      : Response.json({ items: [listItem()], nextCursor: null, prevCursor: null }))
+    renderAt('/automation/runs?before=5')
+    await screen.findByText(/No runs on this page any more/)
+    const newer = screen.getByRole('button', { name: 'Newer' })
+    expect(newer.getAttribute('aria-disabled')).toBe('false')
+    await userEvent.click(newer)
+    await waitFor(() => expect(probe.location).toBe('/automation/runs'))
+    await screen.findByRole('link', { name: /, Passed, / })
+  })
+
+  it('holds the page buttons while the next page loads', async () => {
+    let answerOlder: (r: Response) => void = () => {}
+    stubRelay((url) => url.includes('before=41')
+      ? new Promise<Response>((resolve) => { answerOlder = resolve }) as unknown as Response
+      : Response.json({ items: [listItem()], nextCursor: '41', prevCursor: null }))
+    renderAt('/automation/runs')
+    await userEvent.click(await screen.findByRole('button', { name: 'Older' }))
+    expect(screen.getByRole('button', { name: 'Older' }).getAttribute('aria-disabled')).toBe('true')
+    answerOlder(Response.json({ items: [listItem({ id: 'r0', status: 'failed' })], nextCursor: null, prevCursor: '40' }))
+    await screen.findByRole('link', { name: /, Failed, / })
+  })
+
   it('starts from the newest page when a filter changes', async () => {
     stubRelay(() => Response.json({ items: [listItem()], nextCursor: '41', prevCursor: '50' }))
     renderAt('/automation/runs?before=60')

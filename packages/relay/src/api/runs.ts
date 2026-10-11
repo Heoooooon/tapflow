@@ -496,9 +496,10 @@ export function handleListRuns(req: http.IncomingMessage, res: http.ServerRespon
      LIMIT ?`
   type Row = RunRow & { flows_passed: number; flows_failed: number }
   const db = getDb()
-  const page = q.has('after') && Number.isInteger(after)
+  // `q.get(...)` non-empty first: `Number('')` is 0, which would read `?after=` as "after the first run ever".
+  const page = q.get('after') && Number.isInteger(after)
     ? (db.prepare(sql(filtered('r.seq > ?'), 'ASC')).all(...args, after, limit) as Row[]).reverse()
-    : q.has('before') && Number.isInteger(before)
+    : q.get('before') && Number.isInteger(before)
       ? db.prepare(sql(filtered('r.seq < ?'), 'DESC')).all(...args, before, limit) as Row[]
       : db.prepare(sql(filtered(null), 'DESC')).all(...args, limit) as Row[]
 

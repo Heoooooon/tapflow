@@ -410,6 +410,13 @@ describe('flow run records', () => {
     expect(newer.body.items.map((i: { id: string }) => i.id)).toEqual([buildless, ci])
     expect(newer.body.prevCursor).toBeNull()
     expect(newer.body.nextCursor).not.toBeNull()
+    // `after` is the page directly above, not the newest: one a page, from the oldest run the next one up is `ci`.
+    const above = await call('GET', `/api/v1/runs?limit=1&after=${older.body.prevCursor}`, bearer(PAT_VIEW))
+    expect(above.body.items.map((i: { id: string }) => i.id)).toEqual([ci])
+    expect(above.body.prevCursor).not.toBeNull()
+    // An empty cursor is no cursor.
+    const empty = await call('GET', '/api/v1/runs?limit=2&after=', bearer(PAT_VIEW))
+    expect(empty.body.items.map((i: { id: string }) => i.id)).toEqual([buildless, ci])
     // The cursors follow the filters: CI only has one run, so no page either way.
     const ciOnly = await call('GET', '/api/v1/runs?limit=2&ci=1', bearer(PAT_VIEW))
     expect([ciOnly.body.prevCursor, ciOnly.body.nextCursor]).toEqual([null, null])
