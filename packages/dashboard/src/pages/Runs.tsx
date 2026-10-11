@@ -78,7 +78,7 @@ export function Runs() {
     ...(flow ? { flow } : {}),
     ...(build !== undefined ? { build } : {}),
   }
-  // **One page at a time, 50 runs, Newer and Older by cursor** — not an infinite list. Holding one page is what lets
+  // **One page at a time, `RUNS_PAGE_SIZE` runs, Newer and Older by cursor** — not an infinite list. Holding one page is what lets
   // the page keep following a run in progress (refetching an infinite query fetches every page it holds), and it
   // keeps the table a size a keyboard can get past.
   const runsQuery = useQuery({

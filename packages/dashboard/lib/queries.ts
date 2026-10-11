@@ -232,6 +232,12 @@ function runsSignal(signal?: AbortSignal): AbortSignal {
   return ctl.signal
 }
 
+/**
+ * Runs a page of the list shows. Fewer than the relay's default (50): the newest few are what is looked at, and a
+ * shorter table keeps Newer / Older close — GitHub Actions' run list is 25 too.
+ */
+export const RUNS_PAGE_SIZE = 25
+
 export async function getRuns(filters: RunFilters, cursor: RunCursor, signal?: AbortSignal): Promise<RunPage> {
   const params = new URLSearchParams()
   if (filters.ci !== undefined) params.set('ci', filters.ci ? '1' : '0')
@@ -240,6 +246,7 @@ export async function getRuns(filters: RunFilters, cursor: RunCursor, signal?: A
   if (filters.build !== undefined) params.set('build', String(filters.build))
   if (cursor.before) params.set('before', cursor.before)
   if (cursor.after) params.set('after', cursor.after)
+  params.set('limit', String(RUNS_PAGE_SIZE))
   const path = `/api/v1/runs${params.size ? `?${params}` : ''}`
   const res = await fetch(path, { credentials: 'include', signal: runsSignal(signal) })
   if (!res.ok) throw new Error(`GET /api/v1/runs failed with ${res.status}`)
