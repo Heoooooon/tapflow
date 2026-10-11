@@ -1,4 +1,4 @@
-import type { ApiToken, App, Build, Comment, Recording, ReleaseGroup, ResourcePoint, TeamMember, WorkspaceSettings } from '@/lib/types'
+import type { ApiToken, App, Build, Comment, Recording, ReleaseGroup, ResourcePoint, RunDetail, RunListItem, TeamMember, WorkspaceSettings } from '@/lib/types'
 import { api } from '@/lib/api'
 import type { AuthUser } from '@/hooks/useAuth'
 
@@ -22,6 +22,9 @@ export const queryKeys = {
   recordings: (buildId: number) => ['recordings', buildId] as const,
   agents: ['agents'] as const,
   resourceHistory: (agent: string, range: string) => ['agents', agent, 'resources', range] as const,
+  /** Every filter is in the key, so changing one never shows another filter's rows as this one's. */
+  runs: (filters: RunFilters) => ['runs', 'list', filters] as const,
+  run: (id: string) => ['runs', 'detail', id] as const,
 }
 
 /**
@@ -194,4 +197,58 @@ export function groupByRelease(builds: Build[]): ReleaseGroup[] {
     map.get(key)!.push(b)
   }
   return Array.from(map.entries()).map(([versionName, builds]) => ({ versionName, builds }))
+}
+
+/** The runs page's filters, as the relay takes them. `undefined` is "any". */
+export interface RunFilters {
+  ci?: boolean
+  status?: string
+  flow?: string
+  build?: number
+}
+
+export interface RunPage { items: RunListItem[]; nextCursor: string | null }
+
+/**
+ * How long a runs request may take. The page polls while a run is in progress, and a request that hangs
+ * would hold the next poll behind it; a timeout turns that into a failed poll the next one recovers from.
+ */
+const RUNS_TIMEOUT_MS = 10_000
+
+/** Query's signal (leaving the key or the tab) or the timeout, whichever comes first. By hand rather than
+ *  `AbortSignal.any`, which Safari has only since 17.4. */
+function runsSignal(signal?: AbortSignal): AbortSignal {
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(new DOMException('timed out', 'TimeoutError')), RUNS_TIMEOUT_MS)
+  ctl.signal.addEventListener('abort', () => clearTimeout(timer), { once: true })
+  if (signal) {
+    if (signal.aborted) ctl.abort(signal.reason)
+    else signal.addEventListener('abort', () => ctl.abort(signal.reason), { once: true })
+  }
+  return ctl.signal
+}
+
+export async function getRuns(filters: RunFilters, cursor: string | null, signal?: AbortSignal): Promise<RunPage> {
+  const params = new URLSearchParams()
+  if (filters.ci !== undefined) params.set('ci', filters.ci ? '1' : '0')
+  if (filters.status) params.set('status', filters.status)
+  if (filters.flow) params.set('flow', filters.flow)
+  if (filters.build !== undefined) params.set('build', String(filters.build))
+  if (cursor) params.set('before', cursor)
+  const path = `/api/v1/runs${params.size ? `?${params}` : ''}`
+  const res = await fetch(path, { credentials: 'include', signal: runsSignal(signal) })
+  if (!res.ok) throw new Error(`GET /api/v1/runs failed with ${res.status}`)
+  return res.json() as Promise<RunPage>
+}
+
+/** One run, or `null` when the relay has no such run (deleted with its build, or never existed). */
+export async function getRun(id: string, signal?: AbortSignal): Promise<RunDetail | null> {
+  const res = await fetch(`/api/v1/runs/${encodeURIComponent(id)}`, { credentials: 'include', signal: runsSignal(signal) })
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`GET /api/v1/runs/${id} failed with ${res.status}`)
+  return res.json() as Promise<RunDetail>
+}
+
+export function runScreenshotUrl(runId: string, idx: number): string {
+  return `/api/v1/runs/${encodeURIComponent(runId)}/flows/${idx}/screenshot`
 }

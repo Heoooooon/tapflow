@@ -1,6 +1,6 @@
 ---
 title: REST API
-description: "tapflow REST API 전체 레퍼런스(/api/v1): 인증, 초대, 비밀번호 재설정, 앱, 빌드, 코멘트, 팀, 토큰, 프로필, 설정, 녹화, 에이전트, 세션, 릴레이, 로그의 요청과 응답 형식."
+description: "tapflow REST API 전체 레퍼런스(/api/v1): 인증, 초대, 비밀번호 재설정, 앱, 빌드, 코멘트, 팀, 토큰, 프로필, 설정, 녹화, 실행 기록, 에이전트, 세션, 릴레이, 로그의 요청과 응답 형식."
 ---
 
 # REST API
@@ -15,11 +15,11 @@ description: "tapflow REST API 전체 레퍼런스(/api/v1): 인증, 초대, 비
 
 | PAT scope | 엔드포인트 |
 |-----------|-----------|
-| `builds:write` | `POST /builds`, `GET /builds`, `GET /builds/:id`, `POST /comments`, 웹훅 엔드포인트 전체 |
-| `view` | `GET /apps`, `GET /sessions/:sessionId/screenshot`, `GET /sessions/:sessionId/ui-tree`, `/uploads/` 아래 파일(`/api/v1/`이 아닌 릴레이 루트 경로), 원격에서 여는 기기 세션 WebSocket |
+| `builds:write` | `POST /builds`, `GET /builds`, `GET /builds/:id`, `POST /comments`, 웹훅 엔드포인트 전체, 실행 기록 쓰기(`POST /runs` 아래) |
+| `view` | `GET /apps`, `GET /runs` 아래, `GET /sessions/:sessionId/screenshot`, `GET /sessions/:sessionId/ui-tree`, `/uploads/` 아래 파일(`/api/v1/`이 아닌 릴레이 루트 경로), 원격에서 여는 기기 세션 WebSocket |
 | `agent` | 원격 에이전트의 WebSocket 연결. 토큰을 발급한 팀원이 Admin인 동안에만 받습니다 |
 
-**역할.** PAT로 호출해도 토큰 주인의 현재 역할이 적용됩니다. Viewer는 읽기 전용이라 빌드 업로드·수정·삭제 예약, 앱 생성·수정·삭제, 웹훅 엔드포인트 전체에서 `403`을 받습니다. 빌드 조회와 댓글 작성은 Viewer도 할 수 있습니다. 역할을 확인하는 엔드포인트는 요청마다 역할을 다시 읽으므로 역할을 바꾸면 다시 로그인하거나 토큰을 새로 만들지 않아도 바로 적용됩니다.
+**역할.** PAT로 호출해도 토큰 주인의 현재 역할이 적용됩니다. Viewer는 읽기 전용이라 빌드 업로드·수정·삭제 예약, 앱 생성·수정·삭제, 웹훅 엔드포인트 전체, 실행 기록 쓰기에서 `403`을 받습니다. 빌드 조회와 댓글 작성은 Viewer도 할 수 있습니다. 역할을 확인하는 엔드포인트는 요청마다 역할을 다시 읽으므로 역할을 바꾸면 다시 로그인하거나 토큰을 새로 만들지 않아도 바로 적용됩니다.
 
 
 ## 에러 응답
@@ -301,7 +301,7 @@ Body (JSON):
 
 ### `DELETE /api/v1/apps/:id`
 
-앱과 하위의 모든 빌드·댓글을 삭제합니다. **Admin, Developer, QA** 권한이 필요합니다. Viewer는 `403`을 받습니다.
+앱과 하위의 모든 빌드, 그리고 빌드에 딸린 댓글·녹화·실행 기록과 파일을 삭제합니다. **Admin, Developer, QA** 권한이 필요합니다. Viewer는 `403`을 받습니다.
 
 **응답 `200`**
 
@@ -783,6 +783,125 @@ Query:
 ### `GET /api/v1/recordings/:filename`
 
 녹화 파일을 다운로드합니다. 만료된 파일은 `404`를 반환합니다.
+
+
+## 실행 기록 (Runs) {#runs}
+
+`tapflow flow run`이 실행마다 남기는 기록입니다. CLI가 토큰으로 쓰고, 대시보드의 [Runs](/ko/automation/runs) 페이지가 읽습니다. 직접 호출할 일은 드물지만 CI 대시보드를 따로 만든다면 읽기 엔드포인트를 쓸 수 있습니다.
+
+쓰기 엔드포인트(`POST`)는 `builds:write` 스코프와 쓰기 가능한 역할이 필요하고 실행을 만든 사용자만 쓸 수 있습니다. PAT로 만든 실행은 같은 PAT로만 쓸 수 있습니다. 다른 사용자나 다른 토큰은 `403`, 이미 끝난 실행에 쓰면 `409`를 받습니다. JSON 본문은 1MB까지 받습니다.
+
+빌드에 딸린 실행은 그 빌드가 지워질 때 함께 지워지고 빌드 없이 만든 실행은 7일 뒤 지워집니다.
+
+### `POST /api/v1/runs`
+
+실행 기록을 만듭니다.
+
+```
+Body (JSON):
+  client   string  필수  러너의 WebSocket ?client= 값. 이 소켓이 열려 있는 동안 실행이 진행 중인 것으로 봅니다
+  flows    array   필수  실행할 플로우 [{ name, file? }], 최대 500개
+  buildId  number  선택  테스트하는 빌드
+  ci       object  선택  { provider?, branch?, commit?, jobUrl? }. jobUrl은 http(s) 주소만 저장합니다
+```
+
+**응답 `201`**
+
+```json
+{ "id": "3f2b0c7e-8a41-4b5e-9d0f-1c2d3e4f5a6b" }
+```
+
+### `POST /api/v1/runs/:id/flows/:idx`
+
+`idx`번째 플로우의 결과를 보고합니다. 같은 플로우를 다시 보고하면 덮어씁니다.
+
+```
+Body (JSON):
+  status          "passed" | "failed"  필수
+  durationMs      number               필수
+  steps           array                필수  [{ index, name, status: "passed"|"failed"|"skipped", durationMs, message? }], 최대 1000개
+  failureKind     string               선택  "product" | "environment"
+  failureMessage  string               선택
+  deviceId, deviceName, platform  string  선택
+```
+
+**응답 `200`** `{ "ok": true }`
+
+### `POST /api/v1/runs/:id/flows/:idx/screenshot`
+
+보고한 플로우의 실패 스크린샷을 올립니다. 본문은 이미지 바이트 그대로이고 릴레이는 앞부분 바이트로 PNG나 JPEG인지 판단합니다. 5MB를 넘으면 `413`, 이미지가 아니면 `415`를 받습니다.
+
+**응답 `200`** `{ "ok": true }`
+
+### `POST /api/v1/runs/:id/finish`
+
+실행을 끝냅니다.
+
+```
+Body (JSON):
+  status        "passed" | "failed" | "aborted"  필수
+  exitCode      number                           필수
+  failureKind   string                           선택
+  errorMessage  string                           선택  플로우를 시작하기 전에 실패한 이유 등
+```
+
+**응답 `200`** `{ "ok": true }`
+
+### `GET /api/v1/runs`
+
+실행 기록 목록을 최신순으로 돌려줍니다. 세션 쿠키나 `view` 스코프 PAT로 호출합니다.
+
+```
+Query:
+  ci      "1" | "0"  선택  CI 실행만 / 로컬 실행만
+  status  string     선택  running | passed | failed | aborted
+  flow    string     선택  플로우 이름의 일부(대소문자 무시)
+  build   number     선택
+  before  string     선택  이전 응답의 nextCursor
+  limit   number     선택  기본 50, 최대 100
+```
+
+**응답 `200`**
+
+```json
+{
+  "items": [
+    {
+      "id": "3f2b0c7e-8a41-4b5e-9d0f-1c2d3e4f5a6b",
+      "status": "failed",
+      "finishedBy": "client",
+      "failureKind": "product",
+      "errorMessage": null,
+      "exitCode": 1,
+      "isCi": true,
+      "ci": { "provider": "github", "branch": "main", "commit": "abc1234", "jobUrl": "https://github.com/acme/app/actions/runs/1" },
+      "build": { "id": 7, "appName": "Coffee", "versionName": "1.2.0", "buildNumber": "42", "platform": "ios" },
+      "createdBy": "ci-bot",
+      "flowsTotal": 2,
+      "flowsPassed": 1,
+      "flowsFailed": 1,
+      "createdAt": "2026-10-11 01:00:00",
+      "finishedAt": "2026-10-11 01:01:05"
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+`finishedBy`가 `relay`이면 러너가 끝을 알리기 전에 연결이 끊겨 릴레이가 닫은 실행입니다.
+
+### `GET /api/v1/runs/:id`
+
+실행 하나와 플로우별 결과를 돌려줍니다. 목록 항목의 필드에 아래가 더해집니다.
+
+- `flows`: 계획된 플로우 순서대로입니다. 보고된 플로우는 `status`(`passed`·`failed`)와 `steps`, `device`, `durationMs`, `hasScreenshot`을 담습니다. 아직 보고되지 않은 플로우는 진행 중인 실행에서 `running`(지금 실행 중)이나 `pending`, 끝난 실행에서 `not-run`입니다.
+- `watchSessionId`: 러너가 지금 붙잡고 있는 세션 ID입니다. 진행 중일 때만 값이 있고 [AI 세션 보기](/ko/automation/mcp-server#watch-the-device) 페이지 주소에 씁니다.
+
+존재하지 않는 실행이면 `404`를 받습니다.
+
+### `GET /api/v1/runs/:id/flows/:idx/screenshot`
+
+실패 스크린샷을 `image/png`나 `image/jpeg`로 돌려줍니다. 없으면 `404`를 받습니다.
 
 
 ## 에이전트 (Agents)

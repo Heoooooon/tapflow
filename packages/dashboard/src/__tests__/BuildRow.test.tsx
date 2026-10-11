@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom'
 import { describe, it, expect, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -36,6 +37,8 @@ function renderRow(build: Build, handlers: Partial<Record<'onScheduleDeletion' |
       onCancelDeletion={handlers.onCancelDeletion ?? (() => {})}
       canWrite={canWrite}
     />,
+    // The row links to the build's runs, and a link needs a router.
+    { wrapper: MemoryRouter },
   )
 }
 
@@ -86,7 +89,10 @@ describe('BuildRow — every control names its row', () => {
         <BuildRow build={makeBuild({ id: 2, platform: 'android', build_number: '42', version_name: '1.2.0', delete_after: new Date(Date.now() + 86_400_000 * 3).toISOString() })} isLast
           onNavigate={() => {}} onStatusChange={() => {}} onScheduleDeletion={() => {}} onCancelDeletion={() => {}} canWrite />
       </>,
+      { wrapper: MemoryRouter },
     )
+    expect(screen.getByRole('link', { name: 'Runs of ios build 42, 1.2.0' }).getAttribute('href')).toBe('/automation/runs?source=all&build=1')
+    expect(screen.getByRole('link', { name: 'Runs of android build 42, 1.2.0' }).getAttribute('href')).toBe('/automation/runs?source=all&build=2')
     expect(screen.getByRole('button', { name: 'Schedule deletion of ios build 42, 1.2.0' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Cancel scheduled deletion of android build 42, 1.2.0' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Start QA on ios build 42, 1.2.0' })).toBeTruthy()

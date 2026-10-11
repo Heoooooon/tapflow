@@ -105,3 +105,67 @@ export interface ResourcePoint {
   mem_percent: number
   recorded_at: string
 }
+
+/** What `tapflow flow run` recorded about one run (`/api/v1/runs`). */
+export type RunStatus = 'running' | 'passed' | 'failed' | 'aborted'
+
+export interface RunBuild {
+  id: number
+  appName: string | null
+  versionName: string | null
+  buildNumber: string | null
+  platform: string | null
+}
+
+export interface RunSummary {
+  id: string
+  status: RunStatus
+  /** `relay` when the relay closed it because the runner went away without finishing. */
+  finishedBy: 'client' | 'relay' | null
+  failureKind: string | null
+  errorMessage: string | null
+  exitCode: number | null
+  isCi: boolean
+  ci: { provider: string | null; branch: string | null; commit: string | null; jobUrl: string | null } | null
+  build: RunBuild | null
+  createdBy: string | null
+  flowsTotal: number
+  createdAt: string
+  finishedAt: string | null
+}
+
+/** A row of `GET /api/v1/runs`. */
+export interface RunListItem extends RunSummary {
+  flowsPassed: number
+  flowsFailed: number
+}
+
+export interface RunStep {
+  index: number
+  name: string
+  status: 'passed' | 'failed' | 'skipped'
+  durationMs: number
+  message?: string
+}
+
+/** A flow of a run: reported, or still to come (`running` / `pending`), or never reached (`not-run`). */
+export type RunFlow =
+  | { idx: number; name: string; file: string | null; status: 'running' | 'pending' | 'not-run' }
+  | {
+      idx: number
+      name: string
+      file: string | null
+      status: 'passed' | 'failed'
+      device: { id: string; name: string | null; platform: string | null } | null
+      failureKind: string | null
+      failureMessage: string | null
+      durationMs: number
+      steps: RunStep[]
+      hasScreenshot: boolean
+    }
+
+/** `GET /api/v1/runs/:id`. `watchSessionId` is the session the runner holds now, while it runs. */
+export interface RunDetail extends RunSummary {
+  flows: RunFlow[]
+  watchSessionId: string | null
+}

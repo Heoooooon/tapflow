@@ -471,8 +471,9 @@ export function handleListRuns(req: http.IncomingMessage, res: http.ServerRespon
   if (ci === '1' || ci === '0') { where.push('r.is_ci = ?'); args.push(Number(ci)) }
   const flow = q.get('flow')
   if (flow !== null) {
-    // The planned list, not the reported rows: a run that never reached the flow still ran with it.
-    where.push(`EXISTS (SELECT 1 FROM json_each(r.flows_json) j WHERE json_extract(j.value, '$.name') = ?)`)
+    // The planned list, not the reported rows: a run that never reached the flow still ran with it. A part of the
+    // name, any case — the runs page searches as you type.
+    where.push(`EXISTS (SELECT 1 FROM json_each(r.flows_json) j WHERE instr(lower(json_extract(j.value, '$.name')), lower(?)) > 0)`)
     args.push(flow)
   }
   const before = q.get('before')

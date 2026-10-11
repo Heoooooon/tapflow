@@ -1,6 +1,6 @@
 ---
 title: REST API
-description: "Full tapflow REST API reference under /api/v1: auth, invitations, password reset, apps, builds, comments, team, tokens, profile, settings, recordings, agents, sessions, relay and logs, with request and response shapes."
+description: "Full tapflow REST API reference under /api/v1: auth, invitations, password reset, apps, builds, comments, team, tokens, profile, settings, recordings, runs, agents, sessions, relay and logs, with request and response shapes."
 ---
 
 # REST API
@@ -15,11 +15,11 @@ Only the endpoints below accept a personal access token (PAT), and they accept t
 
 | PAT scope | Endpoints |
 |-----------|-----------|
-| `builds:write` | `POST /builds`, `GET /builds`, `GET /builds/:id`, `POST /comments`, every webhook endpoint |
-| `view` | `GET /apps`, `GET /sessions/:sessionId/screenshot`, `GET /sessions/:sessionId/ui-tree`, files under `/uploads/` (at the relay root, not under `/api/v1/`), device-session WebSockets opened from a remote machine |
+| `builds:write` | `POST /builds`, `GET /builds`, `GET /builds/:id`, `POST /comments`, every webhook endpoint, writing run records (`POST` under `/runs`) |
+| `view` | `GET /apps`, `GET` under `/runs`, `GET /sessions/:sessionId/screenshot`, `GET /sessions/:sessionId/ui-tree`, files under `/uploads/` (at the relay root, not under `/api/v1/`), device-session WebSockets opened from a remote machine |
 | `agent` | A remote agent's WebSocket connection, accepted only while the member who issued the token is an Admin |
 
-**Roles.** A call made with a PAT is held to its owner's current role. Viewer is read-only: uploading, updating or scheduling deletion of a build, creating, renaming or deleting an app, and every webhook endpoint return `403` for a Viewer. Reading builds and posting comments work for a Viewer too. The endpoints that check roles read the role on every request, so a role change applies there without signing in again or issuing a new token.
+**Roles.** A call made with a PAT is held to its owner's current role. Viewer is read-only: uploading, updating or scheduling deletion of a build, creating, renaming or deleting an app, every webhook endpoint and writing run records return `403` for a Viewer. Reading builds and posting comments work for a Viewer too. The endpoints that check roles read the role on every request, so a role change applies there without signing in again or issuing a new token.
 
 
 ## Error responses
@@ -301,7 +301,7 @@ Body (JSON):
 
 ### `DELETE /api/v1/apps/:id`
 
-Delete an app and all its builds and comments. Requires the **Admin, Developer or QA** role. A Viewer gets `403`.
+Delete an app and all its builds, with their comments, recordings, run records and files. Requires the **Admin, Developer or QA** role. A Viewer gets `403`.
 
 **Response `200`**
 
@@ -783,6 +783,125 @@ Query:
 ### `GET /api/v1/recordings/:filename`
 
 Download a recording file. Returns `404` for expired files.
+
+
+## Runs {#runs}
+
+The record `tapflow flow run` leaves for each run. The CLI writes it with its token and the dashboard's [Runs](/automation/runs) page reads it. You rarely call these yourself, but the read endpoints are there if you build your own CI dashboard.
+
+The write endpoints (`POST`) need the `builds:write` scope and a role that may write, and only the user who created a run may write to it; a run created with a PAT takes writes from that PAT only. Another user or token gets `403`, and a write to a finished run gets `409`. JSON bodies are capped at 1 MB.
+
+A run with a build is deleted with that build; a run created without one is deleted after 7 days.
+
+### `POST /api/v1/runs`
+
+Create a run record.
+
+```
+Body (JSON):
+  client   string  required  The runner's WebSocket ?client= value. The run counts as in progress while that socket is open
+  flows    array   required  The flows to run [{ name, file? }], at most 500
+  buildId  number  optional  The build under test
+  ci       object  optional  { provider?, branch?, commit?, jobUrl? }. jobUrl is kept only for an http(s) address
+```
+
+**Response `201`**
+
+```json
+{ "id": "3f2b0c7e-8a41-4b5e-9d0f-1c2d3e4f5a6b" }
+```
+
+### `POST /api/v1/runs/:id/flows/:idx`
+
+Report the result of flow `idx`. Reporting the same flow again replaces it.
+
+```
+Body (JSON):
+  status          "passed" | "failed"  required
+  durationMs      number               required
+  steps           array                required  [{ index, name, status: "passed"|"failed"|"skipped", durationMs, message? }], at most 1000
+  failureKind     string               optional  "product" | "environment"
+  failureMessage  string               optional
+  deviceId, deviceName, platform  string  optional
+```
+
+**Response `200`** `{ "ok": true }`
+
+### `POST /api/v1/runs/:id/flows/:idx/screenshot`
+
+Upload the failure screenshot of a reported flow. The body is the image bytes as they are; the relay tells PNG from JPEG by the first bytes. Over 5 MB gets `413`, anything that is not an image gets `415`.
+
+**Response `200`** `{ "ok": true }`
+
+### `POST /api/v1/runs/:id/finish`
+
+Finish the run.
+
+```
+Body (JSON):
+  status        "passed" | "failed" | "aborted"  required
+  exitCode      number                           required
+  failureKind   string                           optional
+  errorMessage  string                           optional  For example why the run failed before any flow started
+```
+
+**Response `200`** `{ "ok": true }`
+
+### `GET /api/v1/runs`
+
+List run records, newest first. Call it with the session cookie or a `view`-scope PAT.
+
+```
+Query:
+  ci      "1" | "0"  optional  CI runs only / local runs only
+  status  string     optional  running | passed | failed | aborted
+  flow    string     optional  Part of a flow's name, any case
+  build   number     optional
+  before  string     optional  nextCursor from the previous answer
+  limit   number     optional  Default 50, at most 100
+```
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    {
+      "id": "3f2b0c7e-8a41-4b5e-9d0f-1c2d3e4f5a6b",
+      "status": "failed",
+      "finishedBy": "client",
+      "failureKind": "product",
+      "errorMessage": null,
+      "exitCode": 1,
+      "isCi": true,
+      "ci": { "provider": "github", "branch": "main", "commit": "abc1234", "jobUrl": "https://github.com/acme/app/actions/runs/1" },
+      "build": { "id": 7, "appName": "Coffee", "versionName": "1.2.0", "buildNumber": "42", "platform": "ios" },
+      "createdBy": "ci-bot",
+      "flowsTotal": 2,
+      "flowsPassed": 1,
+      "flowsFailed": 1,
+      "createdAt": "2026-10-11 01:00:00",
+      "finishedAt": "2026-10-11 01:01:05"
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+`finishedBy: "relay"` means the runner disconnected before it said the run was over, and the relay closed the run.
+
+### `GET /api/v1/runs/:id`
+
+One run with each flow's result. It has the list item's fields plus:
+
+- `flows`: in the planned order. A reported flow carries `status` (`passed` or `failed`), `steps`, `device`, `durationMs` and `hasScreenshot`. A flow not reported yet is `running` (in progress now) or `pending` on a run in progress, and `not-run` on a finished one.
+- `watchSessionId`: the session the runner holds now. Set only while the run is in progress; it goes in the [watch page](/automation/mcp-server#watch-the-device) address.
+
+An unknown run gets `404`.
+
+### `GET /api/v1/runs/:id/flows/:idx/screenshot`
+
+The failure screenshot as `image/png` or `image/jpeg`, or `404` when there is none.
 
 
 ## Agents

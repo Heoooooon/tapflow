@@ -395,6 +395,8 @@ describe('flow run records', () => {
     expect(await ids('?ci=1')).toEqual([ci])
     expect(await ids('?ci=0')).toEqual([buildless, local])
     expect(await ids('?flow=onboarding')).toEqual([ci])
+    expect(await ids('?flow=BOARD')).toEqual([ci])
+    expect(await ids('?flow=log')).toEqual([buildless, local])
 
     const first = await call('GET', '/api/v1/runs?limit=2', bearer(PAT_VIEW))
     expect(first.body.items).toHaveLength(2)

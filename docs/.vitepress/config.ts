@@ -111,6 +111,7 @@ const enSidebar = [
         items: [
           { text: 'MCP server', link: '/automation/mcp-server' },
           { text: 'Flow reference', link: '/automation/flows' },
+          { text: 'Runs', link: '/automation/runs' },
           { text: 'MCP in CI/CD', link: '/automation/mcp-ci' },
         ],
       },
@@ -224,6 +225,7 @@ const koSidebar = [
         items: [
           { text: 'MCP 서버', link: '/ko/automation/mcp-server' },
           { text: '플로우 레퍼런스', link: '/ko/automation/flows' },
+          { text: '실행 기록 (Runs)', link: '/ko/automation/runs' },
           { text: 'CI/CD에서 MCP 활용', link: '/ko/automation/mcp-ci' },
         ],
       },

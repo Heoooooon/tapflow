@@ -8,10 +8,9 @@ import { WatchedDevice } from '@/components/device/WatchedDevice'
 import { holderKindLabel, watchEndText, watchRefusalText } from '@/lib/aiSession'
 
 /**
- * **Watch, read-only, the device an AI agent is driving.** Reached only through the link the MCP server and the
- * flow runner hand out: watching an agent is for the person who asked it to test, so there is no list of AI
- * sessions to browse. Runs the team cares about — CI — are to get their own page with the flow run records
- * (ROADMAP, "Flow run records"); until then a CI run cannot be watched.
+ * **Watch, read-only, the device an AI agent is driving.** Reached through a link, never a list of AI sessions:
+ * the one the MCP server hands the person who asked it to test, and the one a running flow run offers on its Runs
+ * page, which the whole team may open.
  */
 export function AISessionWatch() {
   const { sessionId = '' } = useParams()

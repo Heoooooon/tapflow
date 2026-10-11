@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TechLabel } from '@/components/ui/tech-label';
@@ -21,7 +22,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Play, Trash2, TimerOff } from 'lucide-react';
+import { ListChecks, Play, Trash2, TimerOff } from 'lucide-react';
 import type { Build } from '@/lib/types';
 import { STATUS_TONE, buildRowName, formatDeletionCountdown } from '@/lib/build-format';
 
@@ -197,6 +198,15 @@ export function BuildRow({
           </Tooltip>
         </TooltipProvider>
         </>)}
+
+        {/* Every recorded flow run of this build, CI and local. Offered on every row, Done included: the runs are
+            what the build was judged by. */}
+        <Button asChild size="sm" variant="outline">
+          <Link to={`/automation/runs?source=all&build=${build.id}`} aria-label={`Runs of ${rowName}`}>
+            <ListChecks className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+            Runs
+          </Link>
+        </Button>
 
         {/* The visible words first, so the name still contains what a voice-control user reads. */}
         <Button size="sm" onClick={() => onNavigate(build.id)} disabled={isDone} aria-label={`Start QA on ${rowName}`}>
