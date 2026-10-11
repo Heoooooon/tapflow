@@ -905,7 +905,7 @@ Query:
 
 ### `GET /api/v1/runs/:id/flows/:idx/screenshot`
 
-실패 스크린샷을 `image/png`나 `image/jpeg`로 돌려줍니다. 없으면 `404`를 받습니다.
+플로우의 스크린샷을 `image/png`나 `image/jpeg`로 돌려줍니다. 없으면 `404`를 받습니다.
 
 
 ## 에이전트 (Agents)
