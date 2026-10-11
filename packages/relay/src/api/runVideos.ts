@@ -107,8 +107,9 @@ export async function handleOpenVideo(
   }
 
   const db = getDb()
-  // The row and its empty file in one synchronous step: nothing can delete the run between them, and the orphan
-  // sweep never sees a file without a row.
+  // The row and its empty file in one synchronous transaction: nothing can delete the run between them, the orphan
+  // sweep never sees a file without a row, and a file that cannot be created (a full disk, a permission) rolls the
+  // row back — left behind, a retried open would answer 200 for a video every chunk then finds gone.
   const existing = findVideo(run.seq, idx)
   if (existing) {
     // An open retried after a timeout. The same video carries on; one that has ended is not reopened.
@@ -117,9 +118,11 @@ export async function handleOpenVideo(
   }
   fs.mkdirSync(videosDir, { recursive: true })
   const file = `${randomUUID()}.tfv`
-  db.prepare('INSERT INTO flow_run_videos (run_seq, idx, file, meta_json) VALUES (?, ?, ?, ?)')
-    .run(run.seq, idx, file, JSON.stringify(meta))
-  fs.writeFileSync(path.join(videosDir, file), '', { flag: 'wx' })
+  db.transaction(() => {
+    db.prepare('INSERT INTO flow_run_videos (run_seq, idx, file, meta_json) VALUES (?, ?, ?, ?)')
+      .run(run.seq, idx, file, JSON.stringify(meta))
+    fs.writeFileSync(path.join(videosDir, file), '', { flag: 'wx' })
+  })()
   json(res, 201, { ok: true, nextSeq: 0 })
 }
 
@@ -279,7 +282,7 @@ export async function handleVideoChunk(
     let fh: fs.promises.FileHandle | undefined
     try {
       fh = await fs.promises.open(path.join(videosDir, video.file), 'r+')
-      await fh.write(buf, 0, buf.length, offset)
+      await writeFully(fh, buf, offset)
     } catch (e) {
       release.run(buf.length, run.seq, idx)
       if ((e as NodeJS.ErrnoException).code === 'ENOENT') return json(res, 410, { error: 'Video no longer kept' })
@@ -299,6 +302,19 @@ export async function handleVideoChunk(
     })()
     json(res, 200, { ok: true, nextSeq: seq + 1 })
   })
+}
+
+/**
+ * A write may land fewer bytes than asked (a disk filling up mid-write), and the chunk row records the whole length:
+ * write the rest, and fail rather than commit a chunk whose tail is not there.
+ */
+export async function writeFully(fh: Pick<fs.promises.FileHandle, 'write'>, buf: Buffer, offset: number): Promise<void> {
+  let done = 0
+  while (done < buf.length) {
+    const { bytesWritten } = await fh.write(buf, done, buf.length - done, offset + done)
+    if (bytesWritten <= 0) throw new Error(`Video chunk write made no progress at ${offset + done}`)
+    done += bytesWritten
+  }
 }
 
 export async function handleEndVideo(

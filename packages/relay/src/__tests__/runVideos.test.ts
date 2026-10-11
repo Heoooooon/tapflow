@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -6,7 +6,7 @@ import { RelayServer } from '../RelayServer'
 import { initDb, getDb, closeDb } from '../db'
 import { signJwt, hashPat } from '../middleware/auth'
 import { purgeExpiredBuilds } from '../api/builds'
-import { purgeRunVideos, shortfall } from '../api/runVideos'
+import { purgeRunVideos, shortfall, writeFully } from '../api/runVideos'
 import type { RunHolders } from '../api/runs'
 
 // A flow's video (A4): the runner opens it, sends chunks while the flow runs, and ends it; the relay writes the
@@ -206,6 +206,41 @@ describe('flow run videos', () => {
     expect(r.status).toBe(413)
     expect(r.body.reason).toBe('size-limit')
     expect((await index(id)).endReason).toBe('size-limit')
+  })
+
+  it('leaves no row behind when the video file cannot be created, so a retried open starts clean', async () => {
+    const id = await newRun()
+    const real = fs.writeFileSync
+    const spy = vi.spyOn(fs, 'writeFileSync').mockImplementation((file, data, options) => {
+      if (String(file).endsWith('.tfv')) throw Object.assign(new Error('no space left'), { code: 'ENOSPC' })
+      real(file, data, options)
+    })
+    try {
+      expect((await open(id)).status).toBe(500)
+    } finally {
+      spy.mockRestore()
+    }
+    expect(getDb().prepare('SELECT COUNT(*) AS n FROM flow_run_videos').get()).toEqual({ n: 0 })
+    expect((await open(id)).status).toBe(201)
+    expect((await chunk(id, 0, Buffer.from('ok'))).status).toBe(200)
+  })
+
+  it('writes the rest of a chunk a short write left, and fails one that makes no progress', async () => {
+    const out = Buffer.alloc(16)
+    const short = { write: async (b: Buffer, off: number, len: number, pos: number) => {
+      const n = Math.min(3, len)
+      b.copy(out, pos, off, off + n)
+      return { bytesWritten: n, buffer: b }
+    } }
+    await writeFully(short as never, Buffer.from('abcdefgh'), 4)
+    expect(out.subarray(4, 12).toString()).toBe('abcdefgh')
+    // Throws after a few calls, so a loop that ignores no progress fails here instead of hanging the worker.
+    let calls = 0
+    const stuck = { write: async (b: Buffer) => {
+      if (++calls > 5) throw new Error('kept writing')
+      return { bytesWritten: 0, buffer: b }
+    } }
+    await expect(writeFully(stuck as never, Buffer.from('x'), 0)).rejects.toThrow('no progress')
   })
 
   it('refuses a chunk whose body was still arriving when the video was ended', async () => {

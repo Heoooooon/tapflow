@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A Flow Runs page.** The dashboard's new **Flow Runs** page lists what `tapflow flow run` recorded, opening on CI runs, filterable by source, status, flow name and build; App Center's build rows link to their runs (**Runs**). A run's page shows each flow's steps, failure message and screenshot, a passed flow's last screen as the evidence that it passed, tells an app failure from an environment problem or a runner that disconnected, and offers **Watch the device** while the run is in progress, so CI runs can now be watched by anyone on the team. Outside CI, `tapflow flow run` prints the run's page link when it ends.
 
+- **The relay can keep a video of each flow a run records.** A flow runner can upload a flow's video to its own run, and anyone who can view runs can read it back through `/api/v1/runs/:id/flows/:idx/video`; `tapflow flow run` and the dashboard start using this in a later release. Videos are stored in `run-videos/` in the data directory. Passed flows' videos are kept 3 days, all videos together are capped at 20 GB, and the relay always leaves at least 1 GB or 10% of the disk free, whichever is larger. When the cap is reached, passed flows' videos go first. Both limits are team settings. Backing up `run-videos/` is optional; see [relay operations](https://www.tapflow.dev/operate/relay-operations).
+
 ### Changed
 
 - **Dashboard pages show the shape of what is loading.** App Center's build list, Mac Resources' charts, and the Team and Tokens tables draw a skeleton of their content while it loads, instead of a "Loading…" line. A load that answers within a quarter second shows nothing, so a fast relay does not flicker.
