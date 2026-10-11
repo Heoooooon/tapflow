@@ -23,6 +23,8 @@ description: 릴레이의 데이터 디렉터리를 백업하고(SQLite는 Lites
 | `tapflow.db-wal` / `tapflow.db-shm` | SQLite WAL 보조 파일입니다. 파일시스템 스냅샷에 함께 포함하거나, Litestream을 사용해 변경분을 안전하게 캡처하세요. |
 | `uploads/` | 릴레이가 제공하는 업로드된 빌드 아티팩트입니다. |
 | `recordings/` | 릴레이를 통해 업로드된 세션 녹화 파일입니다. |
+| `run-screenshots/` | 플로우 실행 기록의 스크린샷입니다. 실패한 화면과 통과한 플로우의 마지막 화면이 들어 있습니다. |
+| `run-videos/` | 플로우 실행 영상입니다. 용량이 크고 보관 정책에 따라 지워지므로 백업은 선택입니다. 백업 없이 복원하면 릴레이가 다음 시작 때 파일이 없는 영상을 더 이상 보관하지 않는 영상으로 표시합니다. |
 | `.env`와 `jwt-secret` | 릴레이 시크릿입니다. 비공개로 보관하고 데이터 디렉터리와 함께 복원해야 기존 세션과 연동이 유지됩니다. |
 
 ### 권장: SQLite에는 Litestream 사용
@@ -72,7 +74,7 @@ litestream restore -config litestream.yml -if-replica-exists "$DATA_DIR/tapflow.
 
 경로는 tapflow를 실행해서 출력을 보는 대신 위 규칙으로 정하세요. 처음 시작할 때 빈 `tapflow.db`가 만들어지고, `litestream restore`는 이미 있는 데이터베이스를 덮어쓰지 않습니다.
 
-그다음 같은 데이터 디렉터리 안의 `uploads/`, `recordings/`, `.env`, `jwt-secret`을 파일 백업에서 복원하세요. Litestream은 SQLite 데이터베이스만 보호합니다. 빌드 파일, 녹화 파일, 시크릿은 별도의 파일시스템 또는 오브젝트 스토리지 백업이 필요합니다.
+그다음 같은 데이터 디렉터리 안의 `uploads/`, `recordings/`, `run-screenshots/`, `.env`, `jwt-secret`을 파일 백업에서 복원하세요. Litestream은 SQLite 데이터베이스만 보호합니다. 빌드 파일, 녹화 파일, 시크릿은 별도의 파일시스템 또는 오브젝트 스토리지 백업이 필요합니다.
 
 ## PM2 (릴레이 Mac 상시 운영)
 

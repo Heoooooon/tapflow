@@ -23,6 +23,8 @@ Important paths:
 | `tapflow.db-wal` / `tapflow.db-shm` | SQLite WAL sidecar files. Include them in filesystem snapshots, or use Litestream so changes are captured safely. |
 | `uploads/` | Uploaded build artifacts served by the relay. |
 | `recordings/` | Session recordings uploaded through the relay. |
+| `run-screenshots/` | Screenshots in flow run records: the screen a flow failed on, and a passed flow's last screen. |
+| `run-videos/` | Flow run videos. They are large and deleted by the retention policy, so backing them up is optional. Restore without them and the relay marks each missing video as no longer kept on its next start. |
 | `.env` and `jwt-secret` | Relay secrets. Keep them private and restore them with the data directory so existing sessions and integrations keep working. |
 
 ### Recommended: Litestream for SQLite
@@ -72,7 +74,7 @@ litestream restore -config litestream.yml -if-replica-exists "$DATA_DIR/tapflow.
 
 Work the directory out from those rules rather than by starting tapflow to see what it prints: the first start creates an empty `tapflow.db`, and `litestream restore` will not overwrite a database that already exists.
 
-Then restore `uploads/`, `recordings/`, `.env`, and `jwt-secret` inside that same data directory from your file backup. Litestream protects the SQLite database only; build files, recordings, and secrets still need a normal filesystem or object-storage backup.
+Then restore `uploads/`, `recordings/`, `run-screenshots/`, `.env`, and `jwt-secret` inside that same data directory from your file backup. Litestream protects the SQLite database only; build files, recordings, and secrets still need a normal filesystem or object-storage backup.
 
 ## PM2 (keeping the relay Mac always on)
 

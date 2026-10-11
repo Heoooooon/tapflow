@@ -167,6 +167,35 @@ What `tapflow flow run` did, for the dashboard's runs page (A3). The CLI writes 
 - **The watch link opens the session the runner holds now**, never a stored one: session ids outlive runs, so a stored id would open whoever took the device next.
 - A run with a build expires with the build; a run with none expires after 7 days.
 
+### Flow run videos (`/api/v1/runs/:id/flows/:idx/video`)
+
+A flow's whole recording, as evidence that it passed as much as of how it failed (A4). The runner opens it, sends
+chunks of the stream it already receives, and ends it; the dashboard reads the chunk index and fetches byte ranges.
+Files live in `run-videos/` beside `uploads/`.
+
+- **A video is its own row, not a column of the flow's.** Chunks arrive while the flow runs, before any flow row
+  exists, and a runner killed mid-flow never reports one.
+- **Chunks are numbered and written at the committed length** (`r+` at `bytes`, never append). A retried chunk is a
+  duplicate, a skipped number is a gap the index reports, and a write torn by a crash is overwritten by the next.
+  Writes to one video are serialised; `r+` also means a file deleted underneath answers 410 instead of being recreated.
+  Seq numbers stop at `MAX_SEQ`: the index lists every missing number up to the last, synchronously.
+- **The cap is enforced on the append path, in one synchronous transaction**: settle orphaned runs, make room,
+  reserve. Usage counts in-flight reservations, so two videos cannot both pass the check, and a chunk is refused if
+  it would bring the disk below `max(1 GB, 10%)` free, whatever the cap says. Only video appends are held to that
+  floor; builds, recordings and the database are not. Reservations count against it too, because bytes not yet
+  written do not show in free space. No write survives a restart, so `start()` zeroes every reservation.
+  Room is made by evicting ended videos of finished runs, passed flows first, oldest first. A running run's video is
+  never evicted; when nothing more can go, the writer's own video ends `storage-full` (507). An evicted row stays,
+  so the page says "no longer kept" rather than "never recorded".
+- **"Ended" is derived here, not only from the end call**, which is lost with the runner: an explicit end, or the
+  run finished and `VIDEO_GRACE_SECONDS` passed (`truncated`), or the relay closed the run as `holder-lost`
+  (`runner-lost`). The grace exists because the last flow's tail is sent after `finish`; `ownRun` takes it as a
+  parameter so only the video routes accept writes to a finished run.
+- **Reads never pass the committed length**, and are `no-store` until the video has ended — a cached range of a
+  growing file would be stale. Ended videos get `private` plus an ETag of their length.
+- The daily purge removes passed flows' videos past `video_pass_retention_days`, sweeps files no live row names,
+  and marks rows whose file is missing as evicted so usage stops counting them. A failure's video is kept as long as its run, unless the cap needs the room.
+
 ## Environment Variables
 
 전체 목록 및 설명: [`docs/reference/configuration.md`](../../docs/reference/configuration.md)
@@ -183,7 +212,11 @@ JWT 시크릿은 `getJwtSecret()`으로 **처음 쓸 때** 만든다. `RelayServ
 
 ## HOW NOT
 
-- Do not store or analyze screen data in the relay. **One exception**: the screenshot a flow run uploads to its run record (`api/runs.ts`) — at most one image per flow (the screen it failed on, or a passed flow's last screen), PNG or JPEG by its bytes, at most 5 MB, served back as its own type with `nosniff`, and deleted with the run. The live stream is still never stored.
+- Do not store or analyze screen data in the relay. **Two exceptions, both uploaded by a flow runner to its own run** — bound to the run's creator, and deleted with the run:
+  - the screenshot (`api/runs.ts`) — at most one image per flow (the screen it failed on, or a passed flow's last screen), PNG or JPEG by its bytes, at most 5 MB, served back as its own type with `nosniff`;
+  - the video (`api/runVideos.ts`) — capped per flow, kept by the retention policy and the disk cap below. The relay reads only the open call's JSON, never the frames.
+
+  A stream the relay is forwarding on its own is still never stored.
 - Do not allow session routing without authentication.
 - Do not introduce designs that require more than a t3.small instance (cost principle).
 - Do not modify files in `public/` directly — they are dashboard build output.

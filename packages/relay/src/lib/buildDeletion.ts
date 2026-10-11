@@ -8,6 +8,7 @@ export interface BuildFileDirs {
   uploadsDir: string
   recordingsDir: string
   runScreenshotsDir: string
+  runVideosDir: string
 }
 
 const SQLITE_MAX_PARAMS = 999
@@ -46,11 +47,15 @@ export function deleteBuildsWithDependents(
     SELECT f.screenshot_file FROM flow_run_flows f JOIN flow_runs r ON r.seq = f.run_seq
     WHERE r.build_id IN (${ph}) AND f.screenshot_file IS NOT NULL`)
 
+  const videos = select<{ file: string }>((ph) => `
+    SELECT v.file FROM flow_run_videos v JOIN flow_runs r ON r.seq = v.run_seq
+    WHERE r.build_id IN (${ph}) AND v.evicted_at IS NULL`)
+
   db.transaction(() => {
     for (const chunk of chunks) {
       const ph = chunk.map(() => '?').join(',')
       db.prepare(`DELETE FROM recordings WHERE build_id IN (${ph})`).run(...chunk)
-      // `flow_run_flows` goes with its run (ON DELETE CASCADE).
+      // `flow_run_flows` and the run's videos go with it (ON DELETE CASCADE).
       db.prepare(`DELETE FROM flow_runs WHERE build_id IN (${ph})`).run(...chunk)
       db.prepare(`DELETE FROM builds WHERE id IN (${ph})`).run(...chunk)
     }
@@ -59,6 +64,7 @@ export function deleteBuildsWithDependents(
 
   for (const { filename } of recordings) unlinkSafe(path.join(dirs.recordingsDir, filename), 'recording')
   for (const { screenshot_file } of screenshots) unlinkSafe(path.join(dirs.runScreenshotsDir, screenshot_file), 'run screenshot')
+  for (const { file } of videos) unlinkSafe(path.join(dirs.runVideosDir, file), 'run video')
   for (const { file_path } of builds) {
     const found = resolveBuildFile(file_path, dirs.uploadsDir)
     if (found !== null) unlinkSafe(found, 'build')
