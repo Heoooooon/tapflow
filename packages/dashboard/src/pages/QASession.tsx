@@ -198,15 +198,9 @@ export function QASession() {
             </div>
           ) : selectedAgent ? (
             <div className="flex flex-col gap-5">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleBackToMacs}
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  ← All Macs
-                </button>
-                <h1 className="text-xl font-semibold tracking-tight">Select device</h1>
-              </div>
+              {/* No back button here: the breadcrumb's build entry returns to the Macs, as every other page goes
+                  back through the breadcrumb. */}
+              <h1 className="text-xl font-semibold tracking-tight">Select device</h1>
 
               <div className="flex items-center gap-2">
                 <SearchInput

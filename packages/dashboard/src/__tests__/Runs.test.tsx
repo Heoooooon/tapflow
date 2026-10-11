@@ -61,7 +61,7 @@ describe('Runs list', () => {
     expect(link.getAttribute('href')).toBe('/automation/runs/r1')
     expect(urls[0]).toBe('/api/v1/runs?ci=1')
     expect(screen.getByText('GitHub Actions · main')).toBeTruthy()
-    expect(link.closest('tr')?.textContent).toContain('2/2 passed')
+    expect(link.closest('tr')?.textContent).toContain('2/2')
   })
 
   it('opens a run from anywhere on its row, and in a new tab with Cmd', async () => {
@@ -73,7 +73,9 @@ describe('Runs list', () => {
     renderAt('/automation/runs')
     const link = await screen.findByRole('link', { name: /, Failed, / })
     const row = link.closest('tr')!
-    expect(row.textContent).toContain('1/2 passed · 1 failed')
+    expect(row.textContent).toContain('1/2')
+    // The status column says how it ended; the cell does not repeat it.
+    expect(row.textContent).not.toContain('failed')
     fireEvent.click(screen.getByText('GitHub Actions · main'), { metaKey: true })
     expect(open).toHaveBeenCalledWith('/automation/runs/r1', '_blank', 'noopener')
     // A drag that selected text is a copy, not a click on the row.

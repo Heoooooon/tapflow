@@ -103,12 +103,7 @@ export function Runs() {
 
   return (
     <div className="flex flex-col gap-5 p-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold tracking-tight">Flow Runs</h1>
-        <p className="text-sm text-muted-foreground">
-          What <TechLabel>tapflow flow run</TechLabel> recorded: each flow&apos;s result, its steps and a screenshot of a failure.
-        </p>
-      </div>
+      <h1 className="text-xl font-semibold tracking-tight">Flow Runs</h1>
 
       <div className="flex flex-wrap items-center gap-3">
         <Tabs value={source} onValueChange={(v) => setParam('source', v === 'ci' ? null : v)}>
@@ -121,7 +116,7 @@ export function Runs() {
           </TabsList>
         </Tabs>
         <Select value={status ?? 'any'} onValueChange={(v) => setParam('status', v === 'any' ? null : v)}>
-          <SelectTrigger className="h-8 w-36 text-xs" aria-label="Status">
+          <SelectTrigger className="h-8 w-36" aria-label="Status">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -152,7 +147,7 @@ export function Runs() {
             <TableRow>
               <TableHead>Status</TableHead>
               <TableHead>Build</TableHead>
-              <TableHead>Flows</TableHead>
+              <TableHead>Flows passed</TableHead>
               <TableHead>Source</TableHead>
               <TableHead>Started</TableHead>
               <TableHead>Duration</TableHead>
@@ -212,7 +207,6 @@ function RunRow({ run }: { run: RunListItem }) {
   const navigate = useNavigate()
   const href = `/automation/runs/${run.id}`
   const build = runBuildLabel(run.build)
-  const done = run.flowsPassed + run.flowsFailed
   return (
     // **The whole row opens the run**, as a CI run list does, and the build name is the one link in it: a mouse
     // gets the row, a keyboard or a screen reader gets one stop per row with a name that says which run. A click
@@ -241,18 +235,8 @@ function RunRow({ run }: { run: RunListItem }) {
           {build}
         </Link>
       </TableCell>
-      <TableCell className="whitespace-nowrap text-xs">
-        {run.status === 'running' ? (
-          <><TechLabel>{done}/{run.flowsTotal}</TechLabel> <span className="text-muted-foreground">done</span></>
-        ) : (
-          <>
-            <TechLabel>{run.flowsPassed}/{run.flowsTotal}</TechLabel> <span className="text-muted-foreground">passed</span>
-            {run.flowsFailed > 0 && (
-              <span className="text-destructive"> · <TechLabel>{run.flowsFailed}</TechLabel> failed</span>
-            )}
-          </>
-        )}
-      </TableCell>
+      {/* Passed of planned, nothing else: the status column already says how the run ended. */}
+      <TableCell><TechLabel>{run.flowsPassed}/{run.flowsTotal}</TechLabel></TableCell>
       <TableCell className="text-sm text-muted-foreground">{runSourceLabel(run)}</TableCell>
       <TableCell className="text-sm text-muted-foreground">{formatAgo(run.createdAt)}</TableCell>
       <TableCell><TechLabel>{runDuration(run)}</TechLabel></TableCell>

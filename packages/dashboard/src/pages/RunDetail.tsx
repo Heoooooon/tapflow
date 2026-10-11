@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Eye, ExternalLink } from 'lucide-react'
+import { Eye, ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { TechLabel } from '@/components/ui/tech-label'
@@ -43,11 +43,6 @@ export function RunDetail() {
 
   return (
     <div className="flex flex-col gap-5 p-6">
-      <div>
-        <Button asChild variant="ghost" size="sm" className="-ml-2">
-          <Link to="/automation/runs"><ArrowLeft className="mr-1.5 h-3.5 w-3.5" aria-hidden />All flow runs</Link>
-        </Button>
-      </div>
       {run ? <RunBody run={run} />
         : run === null ? <p className="text-sm text-muted-foreground">This run is gone. A run is deleted with its build, or after 7 days when it has none.</p>
         : runQuery.isError ? (
@@ -65,18 +60,23 @@ function RunBody({ run }: { run: Run }) {
   const outcome = runOutcomeText(run)
   return (
     <>
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-xl font-semibold tracking-tight">{runBuildLabel(run.build)}</h1>
-          <Badge tone={RUN_STATUS_TONE[run.status]} className="text-xs">{RUN_STATUS_LABEL[run.status]}</Badge>
+      {/* Grouped by what each part answers: which run and how it ended, where it came from, why, what to do. */}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold tracking-tight">{runBuildLabel(run.build)}</h1>
+            <Badge tone={RUN_STATUS_TONE[run.status]} className="text-xs">{RUN_STATUS_LABEL[run.status]}</Badge>
+          </div>
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+            <span>{runSourceLabel(run)}</span>
+            {run.ci?.commit && <TechLabel>{shortCommit(run.ci.commit)}</TechLabel>}
+            <span>Started {formatAgo(run.createdAt)}</span>
+            <span>{run.finishedAt ? 'Took' : 'Running for'} <TechLabel>{runDuration(run)}</TechLabel></span>
+            {run.exitCode !== null && <span>Exit code <TechLabel>{run.exitCode}</TechLabel></span>}
+          </p>
         </div>
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-          <span>{runSourceLabel(run)}</span>
-          {run.ci?.commit && <TechLabel>{shortCommit(run.ci.commit)}</TechLabel>}
-          <span>Started {formatAgo(run.createdAt)}</span>
-          <span>{run.finishedAt ? 'Took' : 'Running for'} <TechLabel>{runDuration(run)}</TechLabel></span>
-          {run.exitCode !== null && <span>Exit code <TechLabel>{run.exitCode}</TechLabel></span>}
-        </p>
+        {/* Announced: on a running run this is where the outcome appears when the poll brings it. */}
+        <p role="status" className="text-sm">{outcome ?? (run.status === 'running' ? 'Running. This page follows the run.' : '')}</p>
         <div className="flex flex-wrap gap-2">
           {run.watchSessionId && (
             <Button asChild size="sm">
@@ -98,8 +98,6 @@ function RunBody({ run }: { run: Run }) {
             </Button>
           )}
         </div>
-        {/* Announced: on a running run this is where the outcome appears when the poll brings it. */}
-        <p role="status" className="text-sm">{outcome ?? (run.status === 'running' ? 'Running. This page follows the run.' : '')}</p>
       </div>
 
       <ol className="flex flex-col gap-3" aria-label="Flows">
