@@ -491,6 +491,32 @@ describe('cmdFlowRun keeps each flow\'s video beside the record (A4)', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  it('retries a failed flow\'s last chunk, and says the video lost its end when the retry fails too', async () => {
+    let tries = 0
+    const relay = fakeRelay((url) => {
+      if (url.endsWith('/video/chunks/0')) { tries++; return Response.json({}, { status: 503 }) }
+      return defaultAnswer(url)
+    })
+    mocks.runFlow.mockImplementation(async () => {
+      streamListener().frame(IDR)
+      return resultOf('failed', 'product')
+    })
+    await cmdFlowRun([file], { token: 'tflw_pat_x' })
+    expect(tries).toBe(2)
+    expect(relay.calls.find((c) => c.url.endsWith('/0/video/end'))!.body).toEqual({ lastSeq: 0, reason: 'truncated' })
+  })
+
+  it('ends the video of a flow cut off by an error, so it is not left open', async () => {
+    const relay = fakeRelay()
+    mocks.runFlow.mockImplementation(async () => {
+      streamListener().frame(IDR)
+      throw new Error('relay connection closed')
+    })
+    await cmdFlowRun([file], { token: 'tflw_pat_x' })
+    expect(process.exitCode).toBe(2)
+    expect(relay.calls.find((c) => c.url.endsWith('/0/video/end'))!.body).toEqual({ lastSeq: 0, reason: 'done' })
+  })
+
   it('never changes the result when the relay refuses video', async () => {
     const relay = fakeRelay((url) => (url.includes('/video') ? Response.json({ error: 'no' }, { status: 500 }) : defaultAnswer(url)))
     mocks.runFlow.mockImplementation(async () => {

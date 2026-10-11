@@ -165,6 +165,21 @@ describe('VideoTap', () => {
     expect(sink.chunks.reduce((n, ch) => n + ch.data.length, 0)).toBeLessThanOrEqual(200)
   })
 
+  it('lets go of a lead-in past its byte cap, and starts the video at the next keyframe instead', () => {
+    const c = clock()
+    const tap = new VideoTap({ now: c.now, keptGopBytes: 150 })
+    tap.frame(h264(IDR(), true))
+    for (let i = 0; i < 5; i++) { c.advance(10); tap.frame(h264(P(20), false)) }
+    const sink = new Sink()
+    tap.begin(sink)
+    expect(sink.meta).toBeNull()
+    c.advance(10)
+    tap.frame(h264(IDR(), true))
+    tap.end()
+    expect(sink.meta).toMatchObject({ clockBase: 10_060, flowStartMs: 0 })
+    expect(records(sink.chunks[0]!.data)).toHaveLength(1)
+  })
+
   it('ends a video cut short as cancelled', () => {
     const tap = new VideoTap({ now: clock().now })
     tap.frame(h264(IDR(), true))

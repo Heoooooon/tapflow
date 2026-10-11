@@ -106,10 +106,12 @@ export class VideoTap {
 
   private readonly now: () => number
   private readonly maxFlowBytes: number
+  private readonly keptGopBytes: number
 
-  constructor(opts: { now?: () => number; maxFlowBytes?: number } = {}) {
+  constructor(opts: { now?: () => number; maxFlowBytes?: number; keptGopBytes?: number } = {}) {
     this.now = opts.now ?? Date.now
     this.maxFlowBytes = opts.maxFlowBytes ?? MAX_FLOW_VIDEO_BYTES
+    this.keptGopBytes = opts.keptGopBytes ?? KEPT_GOP_BYTES
   }
 
   /** A binary message from the relay: a frame of the session this runner holds. */
@@ -134,7 +136,7 @@ export class VideoTap {
     }
     if (this.kept.length > 0 || decodable) {
       this.keptBytes += data.length
-      if (this.keptBytes > KEPT_GOP_BYTES) {
+      if (this.keptBytes > this.keptGopBytes) {
         this.kept = []
         this.keptBytes = 0
       } else {
