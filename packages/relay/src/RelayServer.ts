@@ -103,6 +103,7 @@ import { handleListTokens, handleCreateToken, handleRevokeToken } from './api/to
 import { handleGetSettings, handleUpdateSettings } from './api/settings.js'
 import { handleUpdateProfile } from './api/profile.js'
 import { handleUploadRecording, handleListRecordings, handleDownloadRecording, purgeExpiredRecordings } from './api/recordings.js'
+import { handleEndVideo, handleOpenVideo, handleVideoChunk, handleVideoData, handleVideoIndex, purgeRunVideos, runVideosDirFor } from './api/runVideos.js'
 import { abandonRunsOf, handleCreateRun, handleFinishRun, handleGetFlowScreenshot, handleGetRun, handleListRuns, handleReportFlow, handleUploadFlowScreenshot, purgeExpiredRuns, runScreenshotsDirFor, type RunHolders } from './api/runs.js'
 import { handleListAgents, handleGetAgentResources } from './api/agents.js'
 
@@ -250,6 +251,7 @@ export class RelayServer {
   private logBuffer: string[] = []
   private recordingsDir: string = ''
   private runScreenshotsDir: string = ''
+  private runVideosDir: string = ''
   private purgeRecordingsTimer: ReturnType<typeof setInterval> | null = null
   private purgeOldResourcesTimer: ReturnType<typeof setInterval> | null = null
   private purgeBuildsTimer: ReturnType<typeof setInterval> | null = null
@@ -559,7 +561,7 @@ export class RelayServer {
     this.router.delete('/api/v1/tokens/:id', (req, res, params) => handleRevokeToken(req, res, params, this.onAuthChanged))
 
     // settings
-    this.router.get('/api/v1/settings', handleGetSettings)
+    this.router.get('/api/v1/settings', (req, res) => handleGetSettings(req, res, this.runVideosDir))
     this.router.patch('/api/v1/settings', (req, res) => handleUpdateSettings(req, res, u))
     this.router.patch('/api/v1/profile', (req, res) => handleUpdateProfile(req, res, u))
 
@@ -578,6 +580,13 @@ export class RelayServer {
     this.router.post('/api/v1/runs/:id/flows/:idx', handleReportFlow)
     this.router.post('/api/v1/runs/:id/flows/:idx/screenshot', (req, res, params) => handleUploadFlowScreenshot(req, res, params, this.runScreenshotsDir))
     this.router.get('/api/v1/runs/:id/flows/:idx/screenshot', (req, res, params) => handleGetFlowScreenshot(req, res, params, this.runScreenshotsDir))
+    // a flow's video (A4) — uploaded by the runner while the flow runs, kept by the retention policy
+    this.runVideosDir = runVideosDirFor(u)
+    this.router.post('/api/v1/runs/:id/flows/:idx/video/open', (req, res, params) => handleOpenVideo(req, res, params, this.runVideosDir))
+    this.router.post('/api/v1/runs/:id/flows/:idx/video/chunks/:seq', (req, res, params) => handleVideoChunk(req, res, params, this.runVideosDir, this.runHolders))
+    this.router.post('/api/v1/runs/:id/flows/:idx/video/end', handleEndVideo)
+    this.router.get('/api/v1/runs/:id/flows/:idx/video/index', (req, res, params) => handleVideoIndex(req, res, params, this.runHolders))
+    this.router.get('/api/v1/runs/:id/flows/:idx/video', (req, res, params) => handleVideoData(req, res, params, this.runHolders, this.runVideosDir))
 
     // logs — the relay host only. The buffer holds the addresses of refused connections, nothing
     // remote reads it (`tapflow logs` is its only consumer), and every line is also in the relay's own
@@ -649,7 +658,8 @@ export class RelayServer {
     // runs left over (no build) expire on the same clock.
     const purgeBuildsAndRuns = () => {
       purgeExpiredBuilds(this.buildFileDirs())
-      purgeExpiredRuns(this.runScreenshotsDir, this.runHolders)
+      purgeExpiredRuns(this.runScreenshotsDir, this.runVideosDir, this.runHolders)
+      purgeRunVideos(this.runVideosDir, this.runHolders)
     }
     purgeBuildsAndRuns()
     this.purgeBuildsTimer = setInterval(purgeBuildsAndRuns, 24 * 60 * 60 * 1000)
@@ -927,7 +937,7 @@ export class RelayServer {
    * hands a live tester's session to whoever asked next.
    */
   private buildFileDirs(): BuildFileDirs {
-    return { uploadsDir: this.uploadsDir, recordingsDir: this.recordingsDir, runScreenshotsDir: this.runScreenshotsDir }
+    return { uploadsDir: this.uploadsDir, recordingsDir: this.recordingsDir, runScreenshotsDir: this.runScreenshotsDir, runVideosDir: this.runVideosDir }
   }
 
   /** Open sockets speaking for any of these owner keys. */

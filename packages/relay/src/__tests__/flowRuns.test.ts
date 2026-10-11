@@ -444,7 +444,7 @@ describe('flow run records', () => {
   it('purges a build with its runs and their screenshots', async () => {
     const id = await runWithScreenshot()
     getDb().prepare(`UPDATE builds SET delete_after = datetime('now', '-1 hour') WHERE id = ?`).run(buildId)
-    purgeExpiredBuilds({ uploadsDir, recordingsDir: path.join(uploadsDir, '../recordings'), runScreenshotsDir: shotsDir })
+    purgeExpiredBuilds({ uploadsDir, recordingsDir: path.join(uploadsDir, '../recordings'), runScreenshotsDir: shotsDir, runVideosDir: path.join(uploadsDir, '../run-videos') })
     expect((await call('GET', `/api/v1/runs/${id}`, bearer(PAT_VIEW))).status).toBe(404)
     expect(fs.readdirSync(shotsDir)).toHaveLength(0)
     expect(getDb().prepare('SELECT COUNT(*) AS n FROM flow_run_flows').get()).toEqual({ n: 0 })

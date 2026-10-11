@@ -100,7 +100,7 @@ async function readJsonBody(req: http.IncomingMessage, res: http.ServerResponse)
 
 // ── rows ────────────────────────────────────────────────────────────────────
 
-interface RunRow {
+export interface RunRow {
   seq: number
   id: string
   build_id: number | null
@@ -140,7 +140,7 @@ interface FlowRow {
   screenshot_mime: string | null
 }
 
-function findRun(id: string): RunRow | undefined {
+export function findRun(id: string): RunRow | undefined {
   return getDb().prepare('SELECT * FROM flow_runs WHERE id = ?').get(id) as RunRow | undefined
 }
 
@@ -200,7 +200,14 @@ export function settleOrphanedRuns(holders: RunHolders): void {
  * to the user who created the run — and, when it was created with a PAT, that same PAT. A run id leaking
  * into a CI log must not let another job, or another person's token, rewrite its result.
  */
-function ownRun(req: http.IncomingMessage, res: http.ServerResponse, id: string): RunRow | null {
+export function ownRun(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  id: string,
+  /** Seconds after the runner finished the run during which it may still write. Only video uses it: the last
+   *  flow's tail is sent after `finish`, which goes first so a slow video never costs the run its own ending. */
+  graceAfterFinishSeconds = 0,
+): RunRow | null {
   const auth = requireBuildAuth(req, res)
   if (!auth) return null
   if (!assertCanWrite(res, auth.userId)) return null
@@ -211,8 +218,18 @@ function ownRun(req: http.IncomingMessage, res: http.ServerResponse, id: string)
     json(res, 403, { error: 'Only the run that created this record may write to it' })
     return null
   }
-  if (run.finished_by === 'client') { json(res, 409, { error: 'Run already finished' }); return null }
+  if (run.finished_by === 'client' && !finishedWithin(run, graceAfterFinishSeconds)) {
+    json(res, 409, { error: 'Run already finished' })
+    return null
+  }
   return run
+}
+
+/** Whether the run was finished no more than `seconds` ago. */
+export function finishedWithin(run: Pick<RunRow, 'finished_at'>, seconds: number): boolean {
+  if (seconds <= 0 || run.finished_at === null) return false
+  const row = getDb().prepare(`SELECT ? > datetime('now', ?) AS recent`).get(run.finished_at, `-${seconds} seconds`) as { recent: number }
+  return row.recent === 1
 }
 
 export async function handleCreateRun(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -594,7 +611,7 @@ export function handleGetFlowScreenshot(
 // ── retention ───────────────────────────────────────────────────────────────
 
 /** Runs with no build, past their own expiry. A build's runs go with the build (`deleteBuildsWithDependents`). */
-export function purgeExpiredRuns(screenshotsDir: string, holders: RunHolders): void {
+export function purgeExpiredRuns(screenshotsDir: string, videosDir: string, holders: RunHolders): void {
   settleOrphanedRuns(holders)
   const db = getDb()
   const expired = db.prepare(`
@@ -602,13 +619,18 @@ export function purgeExpiredRuns(screenshotsDir: string, holders: RunHolders): v
   `).all() as { seq: number }[]
   if (expired.length === 0) return
   const files: string[] = []
+  const videos: string[] = []
   db.transaction(() => {
     const shots = db.prepare('SELECT screenshot_file FROM flow_run_flows WHERE run_seq = ? AND screenshot_file IS NOT NULL')
+    // Evicted videos have no file left; their rows go with the run (ON DELETE CASCADE).
+    const vids = db.prepare('SELECT file FROM flow_run_videos WHERE run_seq = ? AND evicted_at IS NULL')
     const del = db.prepare('DELETE FROM flow_runs WHERE seq = ?')
     for (const { seq } of expired) {
       for (const s of shots.all(seq) as { screenshot_file: string }[]) files.push(s.screenshot_file)
+      for (const v of vids.all(seq) as { file: string }[]) videos.push(v.file)
       del.run(seq)
     }
   })()
   for (const f of files) unlinkSafe(path.join(screenshotsDir, f), 'run screenshot')
+  for (const f of videos) unlinkSafe(path.join(videosDir, f), 'run video')
 }

@@ -7,8 +7,14 @@ import { getDb } from '../db.js'
 import { requireRole, requireAuth } from '../middleware/auth.js'
 import { json } from '../router.js'
 import { pipeUpload, unlinkSafe } from '../lib/uploads.js'
+import { diskRoomFor, videoSettings, videoUsageBytes } from './runVideos.js'
 
-export function handleGetSettings(req: http.IncomingMessage, res: http.ServerResponse): void {
+/** Bounds for the video policy fields: 0 days keeps no passed video; the cap is at least 100 MB. */
+const MAX_RETENTION_DAYS = 365
+const MIN_CAP_MB = 100
+const MAX_CAP_MB = 10 * 1024 * 1024
+
+export function handleGetSettings(req: http.IncomingMessage, res: http.ServerResponse, videosDir?: string): void {
   const auth = requireAuth(req, res)
   if (!auth) return
 
@@ -16,9 +22,19 @@ export function handleGetSettings(req: http.IncomingMessage, res: http.ServerRes
   const settings = db.prepare('SELECT team_name, logo_path FROM team_settings WHERE id = 1').get() as
     { team_name: string; logo_path: string | null } | undefined
 
+  // The video policy and what it is using. **The effective cap is the smaller of the setting and the disk's
+  // room**, because a cap larger than the volume is a promise the disk cannot keep — the floor the relay keeps for
+  // itself comes off first.
+  const video = videoSettings()
+  const usage = videoUsageBytes()
+  const room = videosDir ? diskRoomFor(videosDir) : { free: Number.MAX_SAFE_INTEGER, floor: 0 }
   json(res, 200, {
     team_name: settings?.team_name ?? 'tapflow',
     logo_url: settings?.logo_path ? `/uploads/team/${path.basename(settings.logo_path)}` : null,
+    video_pass_retention_days: video.passRetentionDays,
+    video_storage_cap_mb: Math.round(video.storageCapBytes / (1024 * 1024)),
+    video_usage_bytes: usage,
+    video_effective_cap_bytes: Math.min(video.storageCapBytes, usage + Math.max(0, room.free - room.floor)),
   })
 }
 
@@ -58,6 +74,21 @@ export function handleUpdateSettings(
   })
 
   bb.on('finish', async () => {
+    // The policy fields are checked before the logo is put in place, so a refused update changes nothing.
+    const videoFields: [string, number][] = []
+    for (const [field, min, max] of [
+      ['video_pass_retention_days', 0, MAX_RETENTION_DAYS],
+      ['video_storage_cap_mb', MIN_CAP_MB, MAX_CAP_MB],
+    ] as const) {
+      const raw = fields[field]
+      if (raw === undefined) continue
+      const n = Number(raw)
+      if (!/^\d+$/.test(raw) || n < min || n > max) {
+        if (stagedPath) { await written?.catch(() => {}); unlinkSafe(stagedPath, 'staged team logo') }
+        return json(res, 400, { error: `${field} must be an integer from ${min} to ${max}` })
+      }
+      videoFields.push([field, n])
+    }
     if (sizeError) {
       if (stagedPath) unlinkSafe(stagedPath, 'oversized team logo')
       return json(res, 400, { error: 'Max 2MB for logo' })
@@ -77,6 +108,7 @@ export function handleUpdateSettings(
     const params: unknown[] = []
 
     if (fields.team_name) { updates.push('team_name = ?'); params.push(fields.team_name) }
+    for (const [field, n] of videoFields) { updates.push(`${field} = ?`); params.push(n) }
     if (logoPath) { updates.push('logo_path = ?'); params.push(logoPath) }
 
     params.push(1)
