@@ -829,7 +829,7 @@ Body (JSON):
 
 ### `POST /api/v1/runs/:id/flows/:idx/screenshot`
 
-Upload the failure screenshot of a reported flow. The body is the image bytes as they are; the relay tells PNG from JPEG by the first bytes. Over 5 MB gets `413`, anything that is not an image gets `415`.
+Upload the screenshot of a reported flow: the screen it failed on, or the screen a passed flow ended on. The body is the image bytes as they are; the relay tells PNG from JPEG by the first bytes. Over 5 MB gets `413`, anything that is not an image gets `415`.
 
 **Response `200`** `{ "ok": true }`
 
@@ -905,7 +905,7 @@ An unknown run gets `404`.
 
 ### `GET /api/v1/runs/:id/flows/:idx/screenshot`
 
-The failure screenshot as `image/png` or `image/jpeg`, or `404` when there is none.
+The flow's screenshot as `image/png` or `image/jpeg`, or `404` when there is none.
 
 
 ## Agents

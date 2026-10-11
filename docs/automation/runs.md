@@ -1,6 +1,6 @@
 ---
 title: Flow Runs
-description: "See tapflow flow run's records on the dashboard's Flow Runs page: CI and local runs apart, each flow's result and failure screenshot, and a link to watch the device while a run is in progress."
+description: "See tapflow flow run's records on the dashboard's Flow Runs page: CI and local runs apart, each flow's result and the screen it failed on or ended on, and a link to watch the device while a run is in progress."
 ---
 
 # Flow Runs
@@ -27,7 +27,7 @@ The **Runs** button on a build row in App Center lists that build's flow runs on
 
 A run's page lists its flows in the order they ran.
 
-- A failed flow shows its failure message, each step's result and a screenshot from the moment it failed. Select the screenshot to open it full size.
+- A failed flow shows its failure message, each step's result and a screenshot from the moment it failed. A passed flow shows the screen it ended on, as the evidence that it passed: a login flow shows the screen it logged in to. Select a screenshot to open it full size.
 - A flow the run never reached is marked **Not run**.
 - **Open the CI run** opens the run on the CI side when the CI recorded a link to it. For a run with a build, **Other runs of this build** lists the same build's other runs.
 

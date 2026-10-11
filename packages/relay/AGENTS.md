@@ -183,7 +183,7 @@ JWT 시크릿은 `getJwtSecret()`으로 **처음 쓸 때** 만든다. `RelayServ
 
 ## HOW NOT
 
-- Do not store or analyze screen data in the relay. **One exception**: the failure screenshot a flow run uploads to its run record (`api/runs.ts`) — at most one image per flow (the runner sends one when a flow fails), PNG or JPEG by its bytes, at most 5 MB, served back as its own type with `nosniff`, and deleted with the run. The live stream is still never stored.
+- Do not store or analyze screen data in the relay. **One exception**: the screenshot a flow run uploads to its run record (`api/runs.ts`) — at most one image per flow (the screen it failed on, or a passed flow's last screen), PNG or JPEG by its bytes, at most 5 MB, served back as its own type with `nosniff`, and deleted with the run. The live stream is still never stored.
 - Do not allow session routing without authentication.
 - Do not introduce designs that require more than a t3.small instance (cost principle).
 - Do not modify files in `public/` directly — they are dashboard build output.

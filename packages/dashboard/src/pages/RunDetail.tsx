@@ -151,18 +151,27 @@ function FlowItem({ runId, flow }: { runId: string; flow: RunFlow }) {
               ))}
             </ol>
           )}
-          {flow.hasScreenshot && (
-            <a href={runScreenshotUrl(runId, flow.idx)} target="_blank" rel="noreferrer" className="self-start">
-              <img
-                src={runScreenshotUrl(runId, flow.idx)}
-                alt={`The screen when ${flow.name} failed`}
-                loading="lazy"
-                className="max-h-96 rounded-md border"
-              />
-            </a>
-          )}
+          {flow.hasScreenshot && <LastScreen runId={runId} flow={flow} />}
         </div>
       )}
+      {/* A passed flow's last screen is the evidence that it passed — what the login landed on. */}
+      {isReported(flow) && flow.status === 'passed' && flow.hasScreenshot && (
+        <div className="mt-3"><LastScreen runId={runId} flow={flow} /></div>
+      )}
     </li>
+  )
+}
+
+function LastScreen({ runId, flow }: { runId: string; flow: ReportedFlow }) {
+  const url = runScreenshotUrl(runId, flow.idx)
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="block w-fit">
+      <img
+        src={url}
+        alt={flow.status === 'failed' ? `The screen when ${flow.name} failed` : `The screen ${flow.name} ended on`}
+        loading="lazy"
+        className={`${flow.status === 'failed' ? 'max-h-96' : 'max-h-64'} rounded-md border`}
+      />
+    </a>
   )
 }

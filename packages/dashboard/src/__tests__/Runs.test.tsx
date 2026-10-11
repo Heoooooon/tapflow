@@ -268,6 +268,15 @@ describe('Run detail', () => {
     expect(screen.getByRole('link', { name: /Open the CI run/ }).getAttribute('href')).toBe('https://github.com/o/r/actions/runs/1')
   })
 
+  it('shows the screen a passed flow ended on, as its evidence', async () => {
+    stubRelay(() => Response.json(detail({
+      flows: [{ idx: 0, name: 'login', file: null, status: 'passed', device: null, failureKind: null, failureMessage: null, durationMs: 1200, steps: [], hasScreenshot: true }],
+    })))
+    renderAt('/automation/runs/r1')
+    const shot = await screen.findByRole('img', { name: 'The screen login ended on' })
+    expect(shot.getAttribute('src')).toBe('/api/v1/runs/r1/flows/0/screenshot')
+  })
+
   it('says a run is gone rather than failing to load', async () => {
     stubRelay(() => Response.json({ error: 'Run not found' }, { status: 404 }))
     renderAt('/automation/runs/r1')

@@ -201,7 +201,12 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
     }
 
     const driver = new RelayDriver(client, sessionId, opts.build)
-    const engineOpts = opts.timeout !== undefined ? { defaultTimeoutMs: Math.round(opts.timeout * 1000) } : {}
+    const engineOpts = {
+      ...(opts.timeout !== undefined ? { defaultTimeoutMs: Math.round(opts.timeout * 1000) } : {}),
+      // A passed flow's last screen is evidence for the record; with nothing recording, it would be a screenshot per
+      // flow taken for nobody.
+      ...(recorder ? { captureLastScreen: true } : {}),
+    }
     const results: FlowResult[] = []
 
     for (const [flowIndex, flow] of flows.entries()) {
@@ -211,7 +216,8 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
       // the cancel, not the product, so it is neither printed nor recorded.
       if (cancelling) return
       results.push(result)
-      recorder?.reportFlow(flowIndex, flowReport(result, device), result.failureScreenshot)
+      // The screen the flow ended on, failed or passed.
+      recorder?.reportFlow(flowIndex, flowReport(result, device), result.failureScreenshot ?? result.lastScreenshot)
       if (result.status === 'failed' && result.failureKind !== 'environment') sawProductFailure = true
       console.log(result.status === 'passed' ? `✓ (${(result.durationMs / 1000).toFixed(1)}s)` : '✗')
       if (result.status === 'failed') {

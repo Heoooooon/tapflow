@@ -21,6 +21,12 @@ export interface FlowDriver {
 export interface EngineOptions {
   defaultTimeoutMs?: number
   pollIntervalMs?: number
+  /**
+   * Capture the screen a passed flow ends on (`lastScreenshot`): the evidence that "passed" means what it says — a
+   * login flow that passed shows the screen it logged in to. Off by default, because it costs a screenshot per flow;
+   * the CLI turns it on while it is recording the run.
+   */
+  captureLastScreen?: boolean
 }
 
 export interface StepResult {
@@ -39,6 +45,8 @@ export interface FlowResult {
   durationMs: number
   failureMessage?: string
   failureScreenshot?: Buffer
+  /** The screen a passed flow ended on, when `captureLastScreen` asked for it and it could be taken. */
+  lastScreenshot?: Buffer
   /**
    * Which side failed: 'environment' for relay/agent/session-level causes (the CLI
    * exits 2), 'product' for selector, assertion and other failures (exit 1). Present
@@ -51,6 +59,8 @@ export interface FlowResult {
 const DEFAULT_TIMEOUT_MS = 10_000
 const DEFAULT_POLL_INTERVAL_MS = 500
 const FAILURE_SCREENSHOT_TIMEOUT_MS = 10_000
+/** Shorter than a failure's: a passed flow is waited on by the next one, and this is evidence, not diagnosis. */
+const LAST_SCREEN_TIMEOUT_MS = 5_000
 const MAX_TIMER_MS = 2_147_483_647
 
 // scroll direction = where the user wants to reveal more content, so the
@@ -65,7 +75,7 @@ const SCROLL_GESTURES: Record<ScrollDirection, { from: [number, number]; to: [nu
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 const round4 = (n: number): number => Math.round(n * 10000) / 10000
 
-async function captureFailureScreenshot(driver: FlowDriver): Promise<Buffer | undefined> {
+async function captureScreenshot(driver: FlowDriver, timeoutMs: number): Promise<Buffer | undefined> {
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
@@ -75,7 +85,7 @@ async function captureFailureScreenshot(driver: FlowDriver): Promise<Buffer | un
         timer = setTimeout(() => {
           controller.abort()
           resolve(undefined)
-        }, FAILURE_SCREENSHOT_TIMEOUT_MS)
+        }, timeoutMs)
       }),
     ])
   } catch {
@@ -322,7 +332,7 @@ export async function runFlow(flow: Flow, driver: FlowDriver, options: EngineOpt
       failureMessage = `${name}: ${message}`
       if (failureKind === undefined) failureKind = isEnvironmentStepFailure(e) ? 'environment' : 'product'
       steps.push({ index, name, status: 'failed', durationMs: Date.now() - stepStart, message })
-      failureScreenshot = await captureFailureScreenshot(driver)
+      failureScreenshot = await captureScreenshot(driver, FAILURE_SCREENSHOT_TIMEOUT_MS)
     }
   }
 
@@ -330,7 +340,12 @@ export async function runFlow(flow: Flow, driver: FlowDriver, options: EngineOpt
     name: flow.name,
     status: failureMessage === undefined ? 'passed' : 'failed',
     steps,
+    // Before the last-screen capture: it is evidence taken after the flow, not part of how long the flow took.
     durationMs: Date.now() - started,
+  }
+  if (failureMessage === undefined && options.captureLastScreen) {
+    const shot = await captureScreenshot(driver, LAST_SCREEN_TIMEOUT_MS)
+    if (shot !== undefined) result.lastScreenshot = shot
   }
   if (flow.file !== undefined) result.file = flow.file
   if (failureMessage !== undefined) result.failureMessage = failureMessage

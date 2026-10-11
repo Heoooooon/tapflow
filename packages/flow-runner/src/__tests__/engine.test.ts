@@ -194,6 +194,41 @@ describe('runFlow', () => {
     }
   })
 
+  it('captures the screen a passed flow ends on only when asked, and keeps it out of the duration', async () => {
+    const asked = fakeDriver([[]])
+    const passed = await runFlow(flowOf('steps:\n  - pressKey: Enter\n'), asked, { ...OPTS, captureLastScreen: true })
+    expect(passed.status).toBe('passed')
+    expect(passed.lastScreenshot).toEqual(Buffer.from('PNG'))
+    expect(passed.failureScreenshot).toBeUndefined()
+
+    const notAsked = fakeDriver([[]])
+    const plain = await runFlow(flowOf('steps:\n  - pressKey: Enter\n'), notAsked, OPTS)
+    expect(plain.lastScreenshot).toBeUndefined()
+    expect(notAsked.screenshot).not.toHaveBeenCalled()
+
+    // A failed flow already has its last screen as the failure screenshot; it is not taken twice.
+    const failing = fakeDriver([[]])
+    failing.openUrl = vi.fn(async () => { throw new Error('product failure') })
+    const failed = await runFlow(flowOf('steps:\n  - openUrl: "app://x"\n'), failing, { ...OPTS, captureLastScreen: true })
+    expect(failed.lastScreenshot).toBeUndefined()
+    expect(failing.screenshot).toHaveBeenCalledTimes(1)
+  })
+
+  it('gives up on a last screen that stalls, and still passes the flow', async () => {
+    vi.useFakeTimers()
+    try {
+      const driver = fakeDriver([[]])
+      driver.screenshot = vi.fn(() => new Promise<Buffer>(() => {}))
+      const pending = runFlow(flowOf('steps:\n  - pressKey: Enter\n'), driver, { ...OPTS, captureLastScreen: true })
+      await vi.advanceTimersByTimeAsync(5_000)
+      const result = await pending
+      expect(result.status).toBe('passed')
+      expect(result.lastScreenshot).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('fails with a timeout, captures a screenshot, and skips remaining steps', async () => {
     const driver = fakeDriver([[]])
     const result = await runFlow(flowOf('steps:\n  - tapOn: "없는버튼"\n  - pressKey: Enter\n'), driver, OPTS)
