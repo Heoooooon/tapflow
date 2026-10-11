@@ -39,9 +39,10 @@ It also toggles **airplane mode** per device (#607) — the Android half of the 
 - **Which backend a new feature is designed for: gRPC.** It is the primary path — emulators stream through it by
   default since the 2026-06 host-encode work (scrcpy's guest software encoder topped out at 22–29 fps; gRPC + Mac
   VideoToolbox reaches ~59 fps). scrcpy stays for three things only: the **fallback** when gRPC is unavailable (an
-  emulator booted outside tapflow without `-grpc`), **real devices** (code only — no docs, no supported setup), and
+  emulator booted outside tapflow without `-grpc`), **real devices** (the backend exists, but there is no user-facing setup guide and no supported setup), and
   the `TAPFLOW_ANDROID_BACKEND=scrcpy` override. Its standing is iOS JPEG's: it must not break, but a new feature
-  owes it nothing beyond degrading with a reason (the run video in A4 is not recorded on scrcpy, as on JPEG). No
+  owes it nothing beyond degrading with a reason. What exists today works on both: the viewer decodes and records
+  (`MediaRecorder` on the decoded surface) the same way whichever backend streams. No
   input or automation feature depends on it — `PointerControl` is backend-agnostic, buttons and keys go through adb on
   every backend, and `mcp-server` / `flow-runner` never see the backend. Removing it is a separate decision (real-
   device support, and what the fallback becomes), not settled.
