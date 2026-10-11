@@ -19,6 +19,8 @@ A run is recorded when the runner has a token. See [Recording runs](#recording) 
 2. Pick where the runs came from with **All** / **CI** / **Local** at the top. You can narrow the list by status (**Any status**, **Running**, **Passed**, **Failed**, **Cancelled**) and by flow name; part of a name is enough.
 3. Select a row to open that run. Cmd-click (Ctrl-click on Windows and Linux) opens it in a new tab.
 
+The list shows 50 runs a page, newest first; **Newer** and **Older** below it move between pages.
+
 The **Runs** button on a build row in App Center lists that build's flow runs only. The filters are part of the address, so a filtered list is a link you can share.
 
 ### A run's page {#run-detail}
@@ -31,7 +33,7 @@ A run's page lists its flows in the order they ran.
 
 ### Watch a run in progress {#watch-a-run}
 
-While a run is in progress, the run's page refreshes every few seconds, and so does the list until you load older runs. **Watch the device** on the run's page shows the device the runner is driving, live and read-only: nothing you click reaches the device. Up to 4 people can watch a session.
+While a run is in progress, the list and the run's page refresh every few seconds. **Watch the device** on the run's page shows the device the runner is driving, live and read-only: nothing you click reaches the device. Up to 4 people can watch a session.
 
 ## What the statuses mean {#statuses}
 

@@ -857,7 +857,8 @@ Query:
   status  string     optional  running | passed | failed | aborted
   flow    string     optional  Part of a flow's name, ignoring the case of ASCII letters
   build   number     optional
-  before  string     optional  nextCursor from the previous answer
+  before  string     optional  nextCursor from a previous answer: the page of older runs
+  after   string     optional  prevCursor from a previous answer: the page of newer runs
   limit   number     optional  Default 50, at most 100
 ```
 
@@ -884,7 +885,8 @@ Query:
       "finishedAt": "2026-10-11 01:01:05"
     }
   ],
-  "nextCursor": null
+  "nextCursor": null,
+  "prevCursor": null
 }
 ```
 

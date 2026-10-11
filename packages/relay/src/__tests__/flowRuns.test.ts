@@ -35,6 +35,7 @@ interface Body {
   watchSessionId: string | null
   items: { id: string }[]
   nextCursor: string | null
+  prevCursor: string | null
 }
 
 const bearer = (pat: string) => ({ Authorization: `Bearer ${pat}` })
@@ -399,10 +400,19 @@ describe('flow run records', () => {
     expect(await ids('?flow=log')).toEqual([buildless, local])
 
     const first = await call('GET', '/api/v1/runs?limit=2', bearer(PAT_VIEW))
-    expect(first.body.items).toHaveLength(2)
-    const rest = await call('GET', `/api/v1/runs?limit=2&before=${first.body.nextCursor}`, bearer(PAT_VIEW))
-    expect(rest.body.items.map((i: { id: string }) => i.id)).toEqual([local])
-    expect(rest.body.nextCursor).toBeNull()
+    expect(first.body.items.map((i: { id: string }) => i.id)).toEqual([buildless, ci])
+    expect(first.body.prevCursor).toBeNull()
+    const older = await call('GET', `/api/v1/runs?limit=2&before=${first.body.nextCursor}`, bearer(PAT_VIEW))
+    expect(older.body.items.map((i: { id: string }) => i.id)).toEqual([local])
+    expect(older.body.nextCursor).toBeNull()
+    // Newer from the older page is the page directly above it, newest first, and no newer page past the top.
+    const newer = await call('GET', `/api/v1/runs?limit=2&after=${older.body.prevCursor}`, bearer(PAT_VIEW))
+    expect(newer.body.items.map((i: { id: string }) => i.id)).toEqual([buildless, ci])
+    expect(newer.body.prevCursor).toBeNull()
+    expect(newer.body.nextCursor).not.toBeNull()
+    // The cursors follow the filters: CI only has one run, so no page either way.
+    const ciOnly = await call('GET', '/api/v1/runs?limit=2&ci=1', bearer(PAT_VIEW))
+    expect([ciOnly.body.prevCursor, ciOnly.body.nextCursor]).toEqual([null, null])
   })
 
   it('needs a view credential to read', async () => {

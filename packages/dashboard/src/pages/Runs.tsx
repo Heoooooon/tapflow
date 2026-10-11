@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query'
-import { X } from 'lucide-react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { SearchInput } from '@/components/ui/search-input'
@@ -13,9 +13,9 @@ import { ListStateRow } from '@/components/ListStateRow'
 import { useBreadcrumb } from '@/hooks/useBreadcrumb'
 import { useFocusAfterSwap } from '@/hooks/useFocusAfterSwap'
 import { listView } from '@/lib/list-view'
-import { getRuns, queryKeys, type RunFilters } from '@/lib/queries'
+import { getRuns, queryKeys, type RunCursor, type RunFilters } from '@/lib/queries'
 import {
-  RUN_STATUS_LABEL, RUN_STATUS_TONE, formatAgo, listPollInterval, runBuildLabel, runDuration, runSourceLabel,
+  RUN_STATUS_LABEL, RUN_STATUS_TONE, formatAgo, pollWhileRunning, runBuildLabel, runDuration, runSourceLabel,
 } from '@/lib/runs'
 import type { RunListItem, RunStatus } from '@/lib/types'
 
@@ -36,6 +36,9 @@ export function Runs() {
   const buildParam = Number(params.get('build'))
   const build = Number.isInteger(buildParam) && buildParam > 0 ? buildParam : undefined
   const flow = params.get('flow') ?? ''
+  // The page, as a cursor in the URL: a page is a link, and back returns to the page before.
+  const cursor: RunCursor = params.get('after') ? { after: params.get('after')! }
+    : params.get('before') ? { before: params.get('before')! } : {}
 
   const { setNode: setBreadcrumb } = useBreadcrumb()
   useEffect(() => {
@@ -73,29 +76,32 @@ export function Runs() {
     ...(flow ? { flow } : {}),
     ...(build !== undefined ? { build } : {}),
   }
-  const runsQuery = useInfiniteQuery({
-    queryKey: queryKeys.runs(filters),
-    queryFn: ({ pageParam, signal }) => getRuns(filters, pageParam, signal),
-    initialPageParam: null as string | null,
-    getNextPageParam: (last) => last.nextCursor,
-    // A filter change keeps the old rows up until the new ones arrive, rather than flashing the skeleton.
+  // **One page at a time, 50 runs, Newer and Older by cursor** — not an infinite list. Holding one page is what lets
+  // the page keep following a run in progress (refetching an infinite query fetches every page it holds), and it
+  // keeps the table a size a keyboard can get past.
+  const runsQuery = useQuery({
+    queryKey: queryKeys.runs({ ...filters, ...cursor }),
+    queryFn: ({ signal }) => getRuns(filters, cursor, signal),
+    // A filter or page change keeps the old rows up until the new ones arrive, rather than flashing the skeleton.
     placeholderData: keepPreviousData,
-    // Only while the first page alone is loaded. A refetch of an infinite query fetches every page it holds, one after
-    // another, so a list paged back three times would send four requests every few seconds. A run in progress is on
-    // the first page anyway — the newest — and its own page keeps following it.
-    refetchInterval: (query) => listPollInterval(query.state.data?.pages),
+    refetchInterval: (query) => pollWhileRunning(query.state.data?.items.map((r) => r.status)),
   })
-  const runs = runsQuery.data?.pages.flatMap((p) => p.items)
+  const runs = runsQuery.data?.items
   // **A failed filter being fetched again is still the failure**, as App Center holds it (see there): a retry puts
   // the key back to pending, `keepPreviousData` fills it with the previous filter's rows, and the view would turn
   // into a list of runs that do not match the filters on screen — with focus moved into them. `isFetchedAfterMount`
   // keeps it to the failure that was on screen.
   const refetchingAFailure = runsQuery.isFetchedAfterMount && (runsQuery.isPlaceholderData || runsQuery.isLoading)
-  // `isLoadingError`, not `isError`: a failed poll or a failed "Show older runs" keeps the rows already on screen,
-  // where `isError` turned the whole list into the failure and moved focus to its button.
+  // `isLoadingError`, not `isError`: a failed poll keeps the rows already on screen, where `isError` turned the whole
+  // list into the failure and moved focus to its button.
   const view = refetchingAFailure ? 'error' : listView({ data: runs, isError: runsQuery.isLoadingError })
   const sourceTabsRef = useRef<HTMLButtonElement>(null)
   const listRegion = useFocusAfterSwap<HTMLTableSectionElement>(view, sourceTabsRef)
+
+  // A page change is pushed, unlike a filter change, so back returns to the page before.
+  function goToPage(next: RunCursor) {
+    setParams((prev) => withParam(withParam(prev, 'before', next.before ?? null), 'after', next.after ?? null))
+  }
 
   // Named from a row when one is on screen; the id alone when the filter matches nothing.
   const buildOnScreen = build === undefined ? undefined : runs?.find((r) => r.build?.id === build)?.build
@@ -167,33 +173,45 @@ export function Runs() {
         </Table>
       </div>
 
-      {runsQuery.hasNextPage && (
-        <div className="flex items-center gap-3">
-          {/* `aria-disabled`, not `disabled`: a disabled button drops the focus it holds to `body`. */}
-          <Button
-            variant="outline"
-            size="sm"
-            className="aria-disabled:opacity-50"
-            aria-disabled={runsQuery.isFetchingNextPage}
-            onClick={() => { if (!runsQuery.isFetchingNextPage) void runsQuery.fetchNextPage() }}
-          >
-            {runsQuery.isFetchingNextPage ? 'Loading…' : 'Show older runs'}
-          </Button>
-          {/* The rows on screen stay (`isLoadingError` above), so the failure is said here; the button is the retry. */}
-          {runsQuery.isFetchNextPageError && !runsQuery.isFetchingNextPage && (
-            <span className="text-sm text-muted-foreground">Couldn&apos;t load older runs.</span>
-          )}
-        </div>
+      {(runsQuery.data?.prevCursor || runsQuery.data?.nextCursor) && (
+        <nav aria-label="Pages of flow runs" className="flex items-center gap-2">
+          <PageButton cursor={runsQuery.data.prevCursor} onGo={(c) => goToPage({ after: c })}>
+            <ChevronLeft className="mr-1 h-3.5 w-3.5" aria-hidden />Newer
+          </PageButton>
+          <PageButton cursor={runsQuery.data.nextCursor} onGo={(c) => goToPage({ before: c })}>
+            Older<ChevronRight className="ml-1 h-3.5 w-3.5" aria-hidden />
+          </PageButton>
+        </nav>
       )}
     </div>
   )
 }
 
+/** A filter change starts from the newest page: the cursor belonged to the old filters' list. */
 function withParam(prev: URLSearchParams, key: string, value: string | null): URLSearchParams {
   const next = new URLSearchParams(prev)
+  if (key !== 'before' && key !== 'after') { next.delete('before'); next.delete('after') }
   if (value === null) next.delete(key)
   else next.set(key, value)
   return next
+}
+
+/**
+ * Newer or Older. **`aria-disabled`, not `disabled`, at either end**: paging onto the last page disables the button
+ * that was just pressed, and a disabled button drops the focus it holds to `body`.
+ */
+function PageButton({ cursor, onGo, children }: { cursor: string | null; onGo: (cursor: string) => void; children: ReactNode }) {
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="aria-disabled:opacity-50"
+      aria-disabled={cursor === null}
+      onClick={() => { if (cursor !== null) onGo(cursor) }}
+    >
+      {children}
+    </Button>
+  )
 }
 
 function emptyText(source: Source, filtered: boolean): string {

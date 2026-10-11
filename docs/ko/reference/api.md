@@ -857,7 +857,8 @@ Query:
   status  string     선택  running | passed | failed | aborted
   flow    string     선택  플로우 이름의 일부(영문 대소문자 무시)
   build   number     선택
-  before  string     선택  이전 응답의 nextCursor
+  before  string     선택  이전 응답의 nextCursor. 더 오래된 실행 페이지
+  after   string     선택  이전 응답의 prevCursor. 더 최근 실행 페이지
   limit   number     선택  기본 50, 최대 100
 ```
 
@@ -884,7 +885,8 @@ Query:
       "finishedAt": "2026-10-11 01:01:05"
     }
   ],
-  "nextCursor": null
+  "nextCursor": null,
+  "prevCursor": null
 }
 ```
 

@@ -477,25 +477,41 @@ export function handleListRuns(req: http.IncomingMessage, res: http.ServerRespon
     where.push(`EXISTS (SELECT 1 FROM json_each(r.flows_json) j WHERE instr(lower(json_extract(j.value, '$.name')), lower(?)) > 0)`)
     args.push(flow)
   }
-  const before = q.get('before')
-  if (before !== null) { where.push('r.seq < ?'); args.push(Number(before)) }
   const limitParam = Number(q.get('limit'))
   const limit = Number.isInteger(limitParam) && limitParam > 0 ? Math.min(limitParam, PAGE_MAX) : PAGE_DEFAULT
 
-  const rows = getDb().prepare(`
+  // Pages by cursor in both directions: `before` for the page of older runs, `after` for newer ones. Not by number,
+  // because new runs keep arriving on top and a page number would slide. `after` reads upward from the cursor and
+  // is turned back to newest first, so it is the page directly above the one it came from.
+  const before = Number(q.get('before'))
+  const after = Number(q.get('after'))
+  const filtered = (extra: string | null) => [...where, ...(extra ? [extra] : [])]
+  const sql = (conds: string[], order: 'ASC' | 'DESC') => `
     SELECT r.*,
            (SELECT COUNT(*) FROM flow_run_flows f WHERE f.run_seq = r.seq AND f.status = 'passed') AS flows_passed,
            (SELECT COUNT(*) FROM flow_run_flows f WHERE f.run_seq = r.seq AND f.status = 'failed') AS flows_failed
       FROM flow_runs r
-     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-     ORDER BY r.seq DESC
-     LIMIT ?
-  `).all(...args, limit + 1) as (RunRow & { flows_passed: number; flows_failed: number })[]
+     ${conds.length ? `WHERE ${conds.join(' AND ')}` : ''}
+     ORDER BY r.seq ${order}
+     LIMIT ?`
+  type Row = RunRow & { flows_passed: number; flows_failed: number }
+  const db = getDb()
+  const page = q.has('after') && Number.isInteger(after)
+    ? (db.prepare(sql(filtered('r.seq > ?'), 'ASC')).all(...args, after, limit) as Row[]).reverse()
+    : q.has('before') && Number.isInteger(before)
+      ? db.prepare(sql(filtered('r.seq < ?'), 'DESC')).all(...args, before, limit) as Row[]
+      : db.prepare(sql(filtered(null), 'DESC')).all(...args, limit) as Row[]
 
-  const page = rows.slice(0, limit)
+  // A cursor only where a page exists past it, so the page's Newer and Older are offered only when they lead somewhere.
+  const exists = (cond: string, seq: number) => Boolean(
+    db.prepare(`SELECT 1 FROM flow_runs r WHERE ${filtered(cond).join(' AND ')} LIMIT 1`).get(...args, seq),
+  )
+  const first = page[0]
+  const last = page[page.length - 1]
   json(res, 200, {
     items: page.map((r) => ({ ...runSummary(r), flowsPassed: r.flows_passed, flowsFailed: r.flows_failed })),
-    nextCursor: rows.length > limit ? String(page[page.length - 1].seq) : null,
+    nextCursor: last && exists('r.seq < ?', last.seq) ? String(last.seq) : null,
+    prevCursor: first && exists('r.seq > ?', first.seq) ? String(first.seq) : null,
   })
 }
 

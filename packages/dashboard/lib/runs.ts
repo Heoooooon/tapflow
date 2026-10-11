@@ -1,4 +1,4 @@
-import type { RunBuild, RunFlow, RunListItem, RunStatus, RunSummary } from '@/lib/types'
+import type { RunBuild, RunFlow, RunStatus, RunSummary } from '@/lib/types'
 
 /** The badge tone for a run's or a flow's status. */
 export const RUN_STATUS_TONE = {
@@ -112,8 +112,3 @@ export function pollWhileRunning(statuses: readonly RunStatus[] | undefined): nu
   return statuses?.some((s) => s === 'running') ? RUNS_POLL_MS : false
 }
 
-/** The list's refresh: only while it holds its first page alone, and that page has a run in progress. */
-export function listPollInterval(pages: readonly { items: readonly Pick<RunListItem, 'status'>[] }[] | undefined): number | false {
-  if (!pages || pages.length !== 1) return false
-  return pollWhileRunning(pages[0].items.map((r) => r.status))
-}

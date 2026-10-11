@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { Runs } from '@/src/pages/Runs'
 import { RunDetail } from '@/src/pages/RunDetail'
-import { listPollInterval, pollWhileRunning, runOutcomeText, runSourceLabel, RUNS_POLL_MS } from '@/lib/runs'
+import { pollWhileRunning, runOutcomeText, runSourceLabel, RUNS_POLL_MS } from '@/lib/runs'
 import type { RunDetail as Run, RunListItem } from '@/lib/types'
 import { withQuery } from './withQuery'
 
@@ -55,7 +55,7 @@ describe('Runs list', () => {
   beforeEach(() => { probe.location = '' })
 
   it('shows CI runs by default, each row a link to the run', async () => {
-    const urls = stubRelay(() => Response.json({ items: [listItem()], nextCursor: null }))
+    const urls = stubRelay(() => Response.json({ items: [listItem()], nextCursor: null, prevCursor: null }))
     renderAt('/automation/runs')
     const link = await screen.findByRole('link', { name: /^Coffee 1\.2\.0 · build 42, Passed, / })
     expect(link.getAttribute('href')).toBe('/automation/runs/r1')
@@ -68,7 +68,7 @@ describe('Runs list', () => {
     const item = listItem({ status: 'failed', flowsPassed: 1, flowsFailed: 1 })
     stubRelay((url) => url.startsWith('/api/v1/runs/r1')
       ? Response.json({ ...item, flows: [], watchSessionId: null })
-      : Response.json({ items: [item], nextCursor: null }))
+      : Response.json({ items: [item], nextCursor: null, prevCursor: null }))
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     renderAt('/automation/runs')
     const link = await screen.findByRole('link', { name: /, Failed, / })
@@ -88,7 +88,7 @@ describe('Runs list', () => {
   })
 
   it('asks for local runs, and for every run, when the source changes', async () => {
-    const urls = stubRelay(() => Response.json({ items: [], nextCursor: null }))
+    const urls = stubRelay(() => Response.json({ items: [], nextCursor: null, prevCursor: null }))
     renderAt('/automation/runs')
     await screen.findByText(/No CI runs yet/)
     await userEvent.click(screen.getByRole('tab', { name: 'Local' }))
@@ -99,7 +99,7 @@ describe('Runs list', () => {
   })
 
   it('filters by the build in the URL, names it, and can let it go', async () => {
-    const urls = stubRelay(() => Response.json({ items: [listItem()], nextCursor: null }))
+    const urls = stubRelay(() => Response.json({ items: [listItem()], nextCursor: null, prevCursor: null }))
     renderAt('/automation/runs?source=all&build=7')
     await screen.findByRole('link', { name: /, Passed, / })
     expect(urls[0]).toBe('/api/v1/runs?build=7')
@@ -108,7 +108,7 @@ describe('Runs list', () => {
   })
 
   it('searches by flow name after a pause, not on every key', async () => {
-    const urls = stubRelay(() => Response.json({ items: [], nextCursor: null }))
+    const urls = stubRelay(() => Response.json({ items: [], nextCursor: null, prevCursor: null }))
     renderAt('/automation/runs')
     await screen.findByText(/No CI runs yet/)
     await userEvent.type(screen.getByRole('textbox', { name: 'Flow name' }), 'login')
@@ -117,7 +117,7 @@ describe('Runs list', () => {
   })
 
   it('clears the flow box with the rest when a link to the bare page is followed', async () => {
-    stubRelay(() => Response.json({ items: [], nextCursor: null }))
+    stubRelay(() => Response.json({ items: [], nextCursor: null, prevCursor: null }))
     renderAt('/automation/runs?flow=login&status=failed')
     const box = await screen.findByRole('textbox', { name: 'Flow name' })
     expect((box as HTMLInputElement).value).toBe('login')
@@ -132,7 +132,7 @@ describe('Runs list', () => {
     let answerRetry: (r: Response) => void = () => {}
     let failedOnce = false
     stubRelay((url) => {
-      if (!url.includes('status=failed')) return Response.json({ items: [listItem()], nextCursor: null })
+      if (!url.includes('status=failed')) return Response.json({ items: [listItem()], nextCursor: null, prevCursor: null })
       if (!failedOnce) { failedOnce = true; return new Response('', { status: 500 }) }
       return new Promise<Response>((resolve) => { answerRetry = resolve }) as unknown as Response
     })
@@ -144,13 +144,13 @@ describe('Runs list', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(screen.getByText("Couldn't load flow runs.")).toBeTruthy()
     expect(screen.queryByRole('link', { name: /, Passed, / })).toBeNull()
-    answerRetry(Response.json({ items: [], nextCursor: null }))
+    answerRetry(Response.json({ items: [], nextCursor: null, prevCursor: null }))
     await screen.findByText('No runs match these filters.')
   })
 
   it('says a failure is a failure, with a way to try again', async () => {
     let fail = true
-    stubRelay(() => fail ? new Response('', { status: 500 }) : Response.json({ items: [listItem()], nextCursor: null }))
+    stubRelay(() => fail ? new Response('', { status: 500 }) : Response.json({ items: [listItem()], nextCursor: null, prevCursor: null }))
     renderAt('/automation/runs')
     await screen.findByText("Couldn't load flow runs.")
     fail = false
@@ -158,27 +158,38 @@ describe('Runs list', () => {
     await screen.findByRole('link', { name: /, Passed, / })
   })
 
-  it('keeps the rows on screen when loading older runs fails', async () => {
-    stubRelay((url) => url.includes('before=')
-      ? new Response('', { status: 500 })
-      : Response.json({ items: [listItem()], nextCursor: '41' }))
+  it('pages by cursor: Older, Newer, and the URL holds the page', async () => {
+    const urls = stubRelay((url) => url.includes('before=41')
+      ? Response.json({ items: [listItem({ id: 'r0', status: 'failed', flowsPassed: 1, flowsFailed: 1 })], nextCursor: null, prevCursor: '40' })
+      : Response.json({ items: [listItem()], nextCursor: '41', prevCursor: null }))
     renderAt('/automation/runs')
-    await userEvent.click(await screen.findByRole('button', { name: 'Show older runs' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Show older runs' }).getAttribute('aria-disabled')).toBe('false'))
-    expect(screen.getByRole('link', { name: /, Passed, / })).toBeTruthy()
-    expect(screen.queryByText("Couldn't load flow runs.")).toBeNull()
-    expect(screen.getByText("Couldn't load older runs.")).toBeTruthy()
-  })
-
-  it('pages back with the cursor the relay gave', async () => {
-    const urls = stubRelay((url) => url.includes('before=')
-      ? Response.json({ items: [listItem({ id: 'r0', status: 'failed', flowsPassed: 1, flowsFailed: 1 })], nextCursor: null })
-      : Response.json({ items: [listItem()], nextCursor: '41' }))
-    renderAt('/automation/runs')
-    await userEvent.click(await screen.findByRole('button', { name: 'Show older runs' }))
+    await screen.findByRole('link', { name: /, Passed, / })
+    const newer = screen.getByRole('button', { name: 'Newer' })
+    expect(newer.getAttribute('aria-disabled')).toBe('true')
+    await userEvent.click(screen.getByRole('button', { name: 'Older' }))
     await screen.findByRole('link', { name: /, Failed, / })
     expect(urls).toContain('/api/v1/runs?ci=1&before=41')
-    expect(screen.queryByRole('button', { name: 'Show older runs' })).toBeNull()
+    expect(probe.location).toBe('/automation/runs?before=41')
+    // Still focused and still a button at the oldest page, only unavailable.
+    expect(screen.getByRole('button', { name: 'Older' }).getAttribute('aria-disabled')).toBe('true')
+    await userEvent.click(screen.getByRole('button', { name: 'Newer' }))
+    await waitFor(() => expect(urls).toContain('/api/v1/runs?ci=1&after=40'))
+    expect(probe.location).toBe('/automation/runs?after=40')
+  })
+
+  it('starts from the newest page when a filter changes', async () => {
+    stubRelay(() => Response.json({ items: [listItem()], nextCursor: '41', prevCursor: '50' }))
+    renderAt('/automation/runs?before=60')
+    await screen.findByRole('link', { name: /, Passed, / })
+    await userEvent.click(screen.getByRole('tab', { name: 'All' }))
+    await waitFor(() => expect(probe.location).toBe('/automation/runs?source=all'))
+  })
+
+  it('shows no page buttons when everything fits on one page', async () => {
+    stubRelay(() => Response.json({ items: [listItem()], nextCursor: null, prevCursor: null }))
+    renderAt('/automation/runs')
+    await screen.findByRole('link', { name: /, Passed, / })
+    expect(screen.queryByRole('navigation', { name: 'Pages of flow runs' })).toBeNull()
   })
 })
 
@@ -240,14 +251,6 @@ describe('Run detail', () => {
 })
 
 describe('run wording and polling', () => {
-  it('polls the list only while it holds its first page alone', () => {
-    const page = (status: 'running' | 'passed') => ({ items: [{ status }] })
-    expect(listPollInterval([page('running')])).toBe(RUNS_POLL_MS)
-    expect(listPollInterval([page('passed')])).toBe(false)
-    expect(listPollInterval([page('running'), page('passed')])).toBe(false)
-    expect(listPollInterval(undefined)).toBe(false)
-  })
-
   it('polls only while something shown is running', () => {
     expect(pollWhileRunning(['passed', 'running'])).toBe(RUNS_POLL_MS)
     expect(pollWhileRunning(['passed', 'failed', 'aborted'])).toBe(false)

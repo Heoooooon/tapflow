@@ -23,7 +23,7 @@ export const queryKeys = {
   agents: ['agents'] as const,
   resourceHistory: (agent: string, range: string) => ['agents', agent, 'resources', range] as const,
   /** Every filter is in the key, so changing one never shows another filter's rows as this one's. */
-  runs: (filters: RunFilters) => ['runs', 'list', filters] as const,
+  runs: (filters: RunFilters & RunCursor) => ['runs', 'list', filters] as const,
   run: (id: string) => ['runs', 'detail', id] as const,
 }
 
@@ -207,7 +207,11 @@ export interface RunFilters {
   build?: number
 }
 
-export interface RunPage { items: RunListItem[]; nextCursor: string | null }
+/** Which page: the newest when empty, else the page past a cursor the relay gave. */
+export interface RunCursor { before?: string; after?: string }
+
+/** `nextCursor` leads to older runs, `prevCursor` to newer ones; null where there are none. */
+export interface RunPage { items: RunListItem[]; nextCursor: string | null; prevCursor: string | null }
 
 /**
  * How long a runs request may take. The page polls while a run is in progress, and a request that hangs
@@ -228,13 +232,14 @@ function runsSignal(signal?: AbortSignal): AbortSignal {
   return ctl.signal
 }
 
-export async function getRuns(filters: RunFilters, cursor: string | null, signal?: AbortSignal): Promise<RunPage> {
+export async function getRuns(filters: RunFilters, cursor: RunCursor, signal?: AbortSignal): Promise<RunPage> {
   const params = new URLSearchParams()
   if (filters.ci !== undefined) params.set('ci', filters.ci ? '1' : '0')
   if (filters.status) params.set('status', filters.status)
   if (filters.flow) params.set('flow', filters.flow)
   if (filters.build !== undefined) params.set('build', String(filters.build))
-  if (cursor) params.set('before', cursor)
+  if (cursor.before) params.set('before', cursor.before)
+  if (cursor.after) params.set('after', cursor.after)
   const path = `/api/v1/runs${params.size ? `?${params}` : ''}`
   const res = await fetch(path, { credentials: 'include', signal: runsSignal(signal) })
   if (!res.ok) throw new Error(`GET /api/v1/runs failed with ${res.status}`)
