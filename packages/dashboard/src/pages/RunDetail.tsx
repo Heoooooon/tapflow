@@ -26,17 +26,20 @@ export function RunDetail() {
   })
   const run = runQuery.data
 
+  // The label, not the run: a run in progress is a new object on every poll, and the crumb would be torn down and
+  // set again each time for the same words.
+  const crumb = run ? runBuildLabel(run.build) : 'Run'
   const { setNode: setBreadcrumb } = useBreadcrumb()
   useEffect(() => {
     setBreadcrumb(
       <span className="flex items-center gap-1.5 text-sm">
         <Link to="/automation/runs" className="text-muted-foreground hover:text-foreground">Runs</Link>
         <span className="text-muted-foreground">/</span>
-        <span className="font-medium">{run ? runBuildLabel(run.build) : 'Run'}</span>
+        <span className="font-medium">{crumb}</span>
       </span>,
     )
     return () => setBreadcrumb(null)
-  }, [setBreadcrumb, run])
+  }, [setBreadcrumb, crumb])
 
   return (
     <div className="flex flex-col gap-5 p-6">

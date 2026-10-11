@@ -15,7 +15,7 @@ A run is recorded when the runner has a token. See [Recording runs](#recording) 
 
 ## How to use {#how-to-use}
 
-1. Open **Runs** in the dashboard's sidebar. It shows CI runs first.
+1. Open **Runs** in the dashboard's sidebar. It opens on CI runs.
 2. Pick where the runs came from with **CI** / **Local** / **All** at the top. You can narrow the list by status (**Any status**, **Running**, **Passed**, **Failed**, **Cancelled**) and by flow name; part of a name is enough.
 3. Select a row's status badge to open that run.
 
@@ -27,7 +27,7 @@ A run's page lists its flows in the order they ran.
 
 - A failed flow shows its failure message, each step's result and a screenshot from the moment it failed. Select the screenshot to open it full size.
 - A flow the run never reached is marked **Not run**.
-- For a CI run, **Open the CI run** opens the run on the CI side, and **Other runs of this build** lists the same build's other runs.
+- **Open the CI run** opens the run on the CI side when the CI recorded a link to it. For a run with a build, **Other runs of this build** lists the same build's other runs.
 
 ### Watch a run in progress {#watch-a-run}
 

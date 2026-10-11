@@ -855,7 +855,7 @@ Body (JSON):
 Query:
   ci      "1" | "0"  선택  CI 실행만 / 로컬 실행만
   status  string     선택  running | passed | failed | aborted
-  flow    string     선택  플로우 이름의 일부(대소문자 무시)
+  flow    string     선택  플로우 이름의 일부(영문 대소문자 무시)
   build   number     선택
   before  string     선택  이전 응답의 nextCursor
   limit   number     선택  기본 50, 최대 100

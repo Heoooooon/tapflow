@@ -15,7 +15,7 @@ import { useFocusAfterSwap } from '@/hooks/useFocusAfterSwap'
 import { listView } from '@/lib/list-view'
 import { getRuns, queryKeys, type RunFilters } from '@/lib/queries'
 import {
-  RUN_STATUS_LABEL, RUN_STATUS_TONE, formatAgo, pollWhileRunning, runBuildLabel, runDuration, runSourceLabel,
+  RUN_STATUS_LABEL, RUN_STATUS_TONE, formatAgo, listPollInterval, runBuildLabel, runDuration, runSourceLabel,
 } from '@/lib/runs'
 import type { RunListItem, RunStatus } from '@/lib/types'
 
@@ -51,6 +51,15 @@ export function Runs() {
 
   // The box follows what is typed at once; the URL, and so the query, after a pause.
   const [flowInput, setFlowInput] = useState(flow)
+  // **And the box follows the URL when something else changes it** — the sidebar's Runs link, back and
+  // forward. Without this the box kept the old text and the effect below wrote it back 300 ms later, so
+  // clearing the filters cleared every one but the flow. Compared trimmed, or the URL the debounce just
+  // wrote ("log") would eat the space someone is typing ("log ").
+  const [seenFlow, setSeenFlow] = useState(flow)
+  if (flow !== seenFlow) {
+    setSeenFlow(flow)
+    if (flow !== flowInput.trim()) setFlowInput(flow)
+  }
   useEffect(() => {
     const wanted = flowInput.trim()
     if (wanted === flow) return
@@ -71,10 +80,18 @@ export function Runs() {
     getNextPageParam: (last) => last.nextCursor,
     // A filter change keeps the old rows up until the new ones arrive, rather than flashing the skeleton.
     placeholderData: keepPreviousData,
-    refetchInterval: (query) => pollWhileRunning(query.state.data?.pages.flatMap((p) => p.items.map((r) => r.status))),
+    // Only while the first page alone is loaded. A refetch of an infinite query fetches every page it holds, one after
+    // another, so a list paged back three times would send four requests every few seconds. A run in progress is on
+    // the first page anyway — the newest — and its own page keeps following it.
+    refetchInterval: (query) => listPollInterval(query.state.data?.pages),
   })
   const runs = runsQuery.data?.pages.flatMap((p) => p.items)
-  const view = listView({ data: runs, isError: runsQuery.isError })
+  // **A failed filter being fetched again is still the failure**, as App Center holds it (see there): a retry puts
+  // the key back to pending, `keepPreviousData` fills it with the previous filter's rows, and the view would turn
+  // into a list of runs that do not match the filters on screen — with focus moved into them. `isFetchedAfterMount`
+  // keeps it to the failure that was on screen.
+  const refetchingAFailure = runsQuery.isFetchedAfterMount && (runsQuery.isPlaceholderData || runsQuery.isLoading)
+  const view = refetchingAFailure ? 'error' : listView({ data: runs, isError: runsQuery.isError })
   const sourceTabsRef = useRef<HTMLButtonElement>(null)
   const listRegion = useFocusAfterSwap<HTMLTableSectionElement>(view, sourceTabsRef)
 
@@ -137,7 +154,8 @@ export function Runs() {
               <TableHead>Duration</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody {...listRegion}>
+          {/* Busy while the rows are the previous filter's, held until this one's arrive. */}
+          <TableBody {...listRegion} aria-busy={runsQuery.isPlaceholderData}>
             <ListStateRow
               view={view}
               colSpan={6}

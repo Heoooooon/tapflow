@@ -472,7 +472,8 @@ export function handleListRuns(req: http.IncomingMessage, res: http.ServerRespon
   const flow = q.get('flow')
   if (flow !== null) {
     // The planned list, not the reported rows: a run that never reached the flow still ran with it. A part of the
-    // name, any case — the runs page searches as you type.
+    // name, as the runs page searches as you type. SQLite's `lower` folds ASCII only, so "Über" is still
+    // case-sensitive; Hangul has no case.
     where.push(`EXISTS (SELECT 1 FROM json_each(r.flows_json) j WHERE instr(lower(json_extract(j.value, '$.name')), lower(?)) > 0)`)
     args.push(flow)
   }

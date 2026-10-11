@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useEffect } from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { Runs } from '@/src/pages/Runs'
 import { RunDetail } from '@/src/pages/RunDetail'
-import { pollWhileRunning, runOutcomeText, runSourceLabel, RUNS_POLL_MS } from '@/lib/runs'
+import { listPollInterval, pollWhileRunning, runOutcomeText, runSourceLabel, RUNS_POLL_MS } from '@/lib/runs'
 import type { RunDetail as Run, RunListItem } from '@/lib/types'
 import { withQuery } from './withQuery'
 
@@ -42,6 +42,8 @@ function renderAt(path: string) {
         <Route path="/automation/runs" element={<Runs />} />
         <Route path="/automation/runs/:runId" element={<RunDetail />} />
       </Routes>
+      {/* What the sidebar's Runs item is: a link to the same route with no filters. */}
+      <Link to="/automation/runs">Sidebar Runs</Link>
       <LocationProbe />
     </MemoryRouter>,
   ))
@@ -89,6 +91,38 @@ describe('Runs list', () => {
     await userEvent.type(screen.getByRole('textbox', { name: 'Flow name' }), 'login')
     await waitFor(() => expect(urls).toContain('/api/v1/runs?ci=1&flow=login'))
     expect(urls.filter((u) => u.includes('flow='))).toEqual(['/api/v1/runs?ci=1&flow=login'])
+  })
+
+  it('clears the flow box with the rest when a link to the bare page is followed', async () => {
+    stubRelay(() => Response.json({ items: [], nextCursor: null }))
+    renderAt('/automation/runs?flow=login&status=failed')
+    const box = await screen.findByRole('textbox', { name: 'Flow name' })
+    expect((box as HTMLInputElement).value).toBe('login')
+    await userEvent.click(screen.getByRole('link', { name: 'Sidebar Runs' }))
+    await waitFor(() => expect((box as HTMLInputElement).value).toBe(''))
+    // Past the debounce: the box must not have written the old flow back.
+    await new Promise((r) => setTimeout(r, 450))
+    expect(probe.location).toBe('/automation/runs')
+  })
+
+  it('holds a failed filter as the failure while it is tried again, not the previous filter\'s rows', async () => {
+    let answerRetry: (r: Response) => void = () => {}
+    let failedOnce = false
+    stubRelay((url) => {
+      if (!url.includes('status=failed')) return Response.json({ items: [listItem()], nextCursor: null })
+      if (!failedOnce) { failedOnce = true; return new Response('', { status: 500 }) }
+      return new Promise<Response>((resolve) => { answerRetry = resolve }) as unknown as Response
+    })
+    renderAt('/automation/runs')
+    await screen.findByRole('link', { name: /^Passed run of/ })
+    await userEvent.click(screen.getByRole('combobox', { name: 'Status' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Failed' }))
+    await screen.findByText("Couldn't load runs.")
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(screen.getByText("Couldn't load runs.")).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /^Passed run of/ })).toBeNull()
+    answerRetry(Response.json({ items: [], nextCursor: null }))
+    await screen.findByText('No runs match these filters.')
   })
 
   it('says a failure is a failure, with a way to try again', async () => {
@@ -171,6 +205,14 @@ describe('Run detail', () => {
 })
 
 describe('run wording and polling', () => {
+  it('polls the list only while it holds its first page alone', () => {
+    const page = (status: 'running' | 'passed') => ({ items: [{ status }] })
+    expect(listPollInterval([page('running')])).toBe(RUNS_POLL_MS)
+    expect(listPollInterval([page('passed')])).toBe(false)
+    expect(listPollInterval([page('running'), page('passed')])).toBe(false)
+    expect(listPollInterval(undefined)).toBe(false)
+  })
+
   it('polls only while something shown is running', () => {
     expect(pollWhileRunning(['passed', 'running'])).toBe(RUNS_POLL_MS)
     expect(pollWhileRunning(['passed', 'failed', 'aborted'])).toBe(false)

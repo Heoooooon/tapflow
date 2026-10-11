@@ -855,7 +855,7 @@ List run records, newest first. Call it with the session cookie or a `view`-scop
 Query:
   ci      "1" | "0"  optional  CI runs only / local runs only
   status  string     optional  running | passed | failed | aborted
-  flow    string     optional  Part of a flow's name, any case
+  flow    string     optional  Part of a flow's name, ignoring the case of ASCII letters
   build   number     optional
   before  string     optional  nextCursor from the previous answer
   limit   number     optional  Default 50, at most 100
