@@ -17,7 +17,7 @@ A run is recorded when the runner has a token. See [Recording runs](#recording) 
 
 1. Open **Flow Runs** in the dashboard's sidebar. It opens on CI runs.
 2. Pick where the runs came from with **All** / **CI** / **Local** at the top. You can narrow the list by status (**Any status**, **Running**, **Passed**, **Failed**, **Cancelled**) and by flow name; part of a name is enough.
-3. Select a row's status badge to open that run.
+3. Select a row to open that run. Cmd-click (Ctrl-click on Windows and Linux) opens it in a new tab.
 
 The **Runs** button on a build row in App Center lists that build's flow runs only. The filters are part of the address, so a filtered list is a link you can share.
 

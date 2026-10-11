@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -205,24 +205,47 @@ function emptyText(source: Source, filtered: boolean): string {
 }
 
 function RunRow({ run }: { run: RunListItem }) {
+  const navigate = useNavigate()
+  const href = `/automation/runs/${run.id}`
+  const build = runBuildLabel(run.build)
   const done = run.flowsPassed + run.flowsFailed
   return (
-    <TableRow>
+    // **The whole row opens the run**, as a CI run list does, and the build name is the one link in it: a mouse
+    // gets the row, a keyboard or a screen reader gets one stop per row with a name that says which run. A click
+    // that lands on the link is the link's own; the row only handles the rest, with Cmd/Ctrl for a new tab as a
+    // link would.
+    <TableRow
+      className="cursor-pointer"
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest('a')) return
+        if (e.metaKey || e.ctrlKey) window.open(href, '_blank', 'noopener')
+        else void navigate(href)
+      }}
+    >
       <TableCell>
-        {/* The link is the status, so every row has one stop and its name says which run it opens. */}
+        <Badge tone={RUN_STATUS_TONE[run.status]} className="text-xs">{RUN_STATUS_LABEL[run.status]}</Badge>
+      </TableCell>
+      <TableCell className="text-sm">
+        {/* The visible name first, so voice control can say what it reads. */}
         <Link
-          to={`/automation/runs/${run.id}`}
-          className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`${RUN_STATUS_LABEL[run.status]} run of ${runBuildLabel(run.build)}, ${formatAgo(run.createdAt)}`}
+          to={href}
+          className="rounded-sm font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={`${build}, ${RUN_STATUS_LABEL[run.status]}, ${formatAgo(run.createdAt)}`}
         >
-          <Badge tone={RUN_STATUS_TONE[run.status]} className="text-xs">{RUN_STATUS_LABEL[run.status]}</Badge>
+          {build}
         </Link>
       </TableCell>
-      <TableCell className="text-sm">{runBuildLabel(run.build)}</TableCell>
-      <TableCell>
-        <TechLabel>
-          {run.status === 'running' ? `${done}/${run.flowsTotal}` : `${run.flowsPassed}/${run.flowsTotal} passed`}
-        </TechLabel>
+      <TableCell className="whitespace-nowrap text-xs">
+        {run.status === 'running' ? (
+          <><TechLabel>{done}/{run.flowsTotal}</TechLabel> <span className="text-muted-foreground">done</span></>
+        ) : (
+          <>
+            <TechLabel>{run.flowsPassed}/{run.flowsTotal}</TechLabel> <span className="text-muted-foreground">passed</span>
+            {run.flowsFailed > 0 && (
+              <span className="text-destructive"> · <TechLabel>{run.flowsFailed}</TechLabel> failed</span>
+            )}
+          </>
+        )}
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">{runSourceLabel(run)}</TableCell>
       <TableCell className="text-sm text-muted-foreground">{formatAgo(run.createdAt)}</TableCell>

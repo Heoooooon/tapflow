@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useEffect } from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { Runs } from '@/src/pages/Runs'
@@ -57,11 +57,27 @@ describe('Runs list', () => {
   it('shows CI runs by default, each row a link to the run', async () => {
     const urls = stubRelay(() => Response.json({ items: [listItem()], nextCursor: null }))
     renderAt('/automation/runs')
-    const link = await screen.findByRole('link', { name: /^Passed run of Coffee 1\.2\.0 · build 42/ })
+    const link = await screen.findByRole('link', { name: /^Coffee 1\.2\.0 · build 42, Passed, / })
     expect(link.getAttribute('href')).toBe('/automation/runs/r1')
     expect(urls[0]).toBe('/api/v1/runs?ci=1')
     expect(screen.getByText('GitHub Actions · main')).toBeTruthy()
-    expect(screen.getByText('2/2 passed')).toBeTruthy()
+    expect(link.closest('tr')?.textContent).toContain('2/2 passed')
+  })
+
+  it('opens a run from anywhere on its row, and in a new tab with Cmd', async () => {
+    const item = listItem({ status: 'failed', flowsPassed: 1, flowsFailed: 1 })
+    stubRelay((url) => url.startsWith('/api/v1/runs/r1')
+      ? Response.json({ ...item, flows: [], watchSessionId: null })
+      : Response.json({ items: [item], nextCursor: null }))
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    renderAt('/automation/runs')
+    const link = await screen.findByRole('link', { name: /, Failed, / })
+    const row = link.closest('tr')!
+    expect(row.textContent).toContain('1/2 passed · 1 failed')
+    fireEvent.click(screen.getByText('GitHub Actions · main'), { metaKey: true })
+    expect(open).toHaveBeenCalledWith('/automation/runs/r1', '_blank', 'noopener')
+    await userEvent.click(screen.getByText('GitHub Actions · main'))
+    await waitFor(() => expect(probe.location).toBe('/automation/runs/r1'))
   })
 
   it('asks for local runs, and for every run, when the source changes', async () => {
@@ -78,7 +94,7 @@ describe('Runs list', () => {
   it('filters by the build in the URL, names it, and can let it go', async () => {
     const urls = stubRelay(() => Response.json({ items: [listItem()], nextCursor: null }))
     renderAt('/automation/runs?source=all&build=7')
-    await screen.findByRole('link', { name: /^Passed run of/ })
+    await screen.findByRole('link', { name: /, Passed, / })
     expect(urls[0]).toBe('/api/v1/runs?build=7')
     await userEvent.click(screen.getByRole('button', { name: 'Show runs of every build, not only Coffee 1.2.0 · build 42' }))
     await waitFor(() => expect(probe.location).toBe('/automation/runs?source=all'))
@@ -114,13 +130,13 @@ describe('Runs list', () => {
       return new Promise<Response>((resolve) => { answerRetry = resolve }) as unknown as Response
     })
     renderAt('/automation/runs')
-    await screen.findByRole('link', { name: /^Passed run of/ })
+    await screen.findByRole('link', { name: /, Passed, / })
     await userEvent.click(screen.getByRole('combobox', { name: 'Status' }))
     await userEvent.click(await screen.findByRole('option', { name: 'Failed' }))
     await screen.findByText("Couldn't load flow runs.")
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(screen.getByText("Couldn't load flow runs.")).toBeTruthy()
-    expect(screen.queryByRole('link', { name: /^Passed run of/ })).toBeNull()
+    expect(screen.queryByRole('link', { name: /, Passed, / })).toBeNull()
     answerRetry(Response.json({ items: [], nextCursor: null }))
     await screen.findByText('No runs match these filters.')
   })
@@ -132,7 +148,7 @@ describe('Runs list', () => {
     await screen.findByText("Couldn't load flow runs.")
     fail = false
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
-    await screen.findByRole('link', { name: /^Passed run of/ })
+    await screen.findByRole('link', { name: /, Passed, / })
   })
 
   it('keeps the rows on screen when loading older runs fails', async () => {
@@ -142,7 +158,7 @@ describe('Runs list', () => {
     renderAt('/automation/runs')
     await userEvent.click(await screen.findByRole('button', { name: 'Show older runs' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Show older runs' }).getAttribute('aria-disabled')).toBe('false'))
-    expect(screen.getByRole('link', { name: /^Passed run of/ })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /, Passed, / })).toBeTruthy()
     expect(screen.queryByText("Couldn't load flow runs.")).toBeNull()
   })
 
@@ -152,7 +168,7 @@ describe('Runs list', () => {
       : Response.json({ items: [listItem()], nextCursor: '41' }))
     renderAt('/automation/runs')
     await userEvent.click(await screen.findByRole('button', { name: 'Show older runs' }))
-    await screen.findByRole('link', { name: /^Failed run of/ })
+    await screen.findByRole('link', { name: /, Failed, / })
     expect(urls).toContain('/api/v1/runs?ci=1&before=41')
     expect(screen.queryByRole('button', { name: 'Show older runs' })).toBeNull()
   })
