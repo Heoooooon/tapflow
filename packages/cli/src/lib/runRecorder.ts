@@ -15,7 +15,7 @@ import type { CiContext } from './ci.js'
 export interface RunRecorderDeps {
   fetch: typeof fetch
   /** One line to the person running the command. At most twice per run: once if recording stops, and once
-   *  the first time a failure screenshot cannot be sent. */
+   *  the first time a flow's screenshot (the screen it failed on or ended on) cannot be sent. */
   warn: (line: string) => void
   callTimeoutMs?: number
 }
@@ -106,7 +106,7 @@ export class RunRecorder {
           if (!this.screenshotWarned) {
             this.screenshotWarned = true
             const reason = e instanceof RecordRefused ? e.message : (e as Error).message
-            this.deps.warn(`failure screenshot not recorded (flow ${idx + 1}): ${reason}; the rest of the run is still recorded`)
+            this.deps.warn(`screenshot not recorded (flow ${idx + 1}): ${reason}; the rest of the run is still recorded`)
           }
         }
       }

@@ -259,6 +259,21 @@ describe('cmdFlowRun records the run on the relay (A3)', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  it('asks a recorded run for each passed flow\'s last screen and sends it as the flow\'s screenshot', async () => {
+    const relay = fakeRelay()
+    mocks.runFlow.mockResolvedValue({ ...resultOf('passed'), lastScreenshot: Buffer.from('home') })
+    await cmdFlowRun([file], { token: 'tflw_pat_x' })
+    expect(mocks.runFlow.mock.calls[0]![2]).toMatchObject({ captureLastScreen: true })
+    expect(relay.calls.map((c) => c.url)).toContain('http://localhost:4000/api/v1/runs/run-1/flows/0/screenshot')
+  })
+
+  it('takes no last screens when nothing records the run', async () => {
+    fakeRelay()
+    mocks.runFlow.mockResolvedValue(resultOf('passed'))
+    await cmdFlowRun([file], { token: 'tflw_pat_x', record: false })
+    expect(mocks.runFlow.mock.calls[0]![2]).not.toHaveProperty('captureLastScreen')
+  })
+
   it('finishes before it lets go of the relay, so the record is the runner\'s and not the relay\'s guess', async () => {
     const relay = fakeRelay()
     mocks.runFlow.mockResolvedValue(resultOf('passed'))
