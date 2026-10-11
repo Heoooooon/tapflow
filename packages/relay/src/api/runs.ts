@@ -465,12 +465,15 @@ export function handleListRuns(req: http.IncomingMessage, res: http.ServerRespon
   const args: (string | number)[] = []
   // A number that is not an id is refused rather than read: `build=abc` would match nothing, and a malformed cursor
   // would quietly answer the newest page — a valid-looking reply holding the wrong runs. An empty value is "none".
-  for (const key of ['build', 'before', 'after']) {
+  // **The text is checked, not `Number(text)`**, which reads " " as 0, "0x10" as 16 and "1e2" as 100.
+  const ids: Partial<Record<'build' | 'before' | 'after', number>> = {}
+  for (const key of ['build', 'before', 'after'] as const) {
     const v = q.get(key)
-    if (v && nonNegInt(Number(v)) === null) return json(res, 400, { error: `${key} must be a non-negative integer` })
+    if (!v) continue
+    if (!/^\d+$/.test(v)) return json(res, 400, { error: `${key} must be a non-negative integer` })
+    ids[key] = Number(v)
   }
-  const build = q.get('build')
-  if (build) { where.push('r.build_id = ?'); args.push(Number(build)) }
+  if (ids.build !== undefined) { where.push('r.build_id = ?'); args.push(ids.build) }
   const status = q.get('status')
   if (status !== null) { where.push('r.status = ?'); args.push(status) }
   const ci = q.get('ci')
@@ -489,8 +492,6 @@ export function handleListRuns(req: http.IncomingMessage, res: http.ServerRespon
   // Pages by cursor in both directions: `before` for the page of older runs, `after` for newer ones. Not by number,
   // because new runs keep arriving on top and a page number would slide. `after` reads upward from the cursor and
   // is turned back to newest first, so it is the page directly above the one it came from.
-  const before = Number(q.get('before'))
-  const after = Number(q.get('after'))
   const filtered = (extra: string | null) => [...where, ...(extra ? [extra] : [])]
   const sql = (conds: string[], order: 'ASC' | 'DESC') => `
     SELECT r.*,
@@ -502,10 +503,10 @@ export function handleListRuns(req: http.IncomingMessage, res: http.ServerRespon
      LIMIT ?`
   type Row = RunRow & { flows_passed: number; flows_failed: number }
   const db = getDb()
-  // `q.get(...)` non-empty first: `Number('')` is 0, which would read `?after=` as "after the first run ever".
-  const page = q.get('after') && Number.isInteger(after)
+  const { before, after } = ids
+  const page = after !== undefined
     ? (db.prepare(sql(filtered('r.seq > ?'), 'ASC')).all(...args, after, limit) as Row[]).reverse()
-    : q.get('before') && Number.isInteger(before)
+    : before !== undefined
       ? db.prepare(sql(filtered('r.seq < ?'), 'DESC')).all(...args, before, limit) as Row[]
       : db.prepare(sql(filtered(null), 'DESC')).all(...args, limit) as Row[]
 
