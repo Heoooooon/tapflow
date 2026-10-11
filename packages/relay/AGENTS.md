@@ -180,9 +180,10 @@ Files live in `run-videos/` beside `uploads/`.
   Writes to one video are serialised; `r+` also means a file deleted underneath answers 410 instead of being recreated.
   Seq numbers stop at `MAX_SEQ`: the index lists every missing number up to the last, synchronously.
 - **The cap is enforced on the append path, in one synchronous transaction**: settle orphaned runs, make room,
-  reserve. Usage counts in-flight reservations, so two videos cannot both pass the check, and the disk's free space
-  is held above `max(1 GB, 10%)` whatever the cap says — reservations count against that floor too, because bytes
-  not yet written do not show in free space. No write survives a restart, so `start()` zeroes every reservation.
+  reserve. Usage counts in-flight reservations, so two videos cannot both pass the check, and a chunk is refused if
+  it would bring the disk below `max(1 GB, 10%)` free, whatever the cap says. Only video appends are held to that
+  floor; builds, recordings and the database are not. Reservations count against it too, because bytes not yet
+  written do not show in free space. No write survives a restart, so `start()` zeroes every reservation.
   Room is made by evicting ended videos of finished runs, passed flows first, oldest first. A running run's video is
   never evicted; when nothing more can go, the writer's own video ends `storage-full` (507). An evicted row stays,
   so the page says "no longer kept" rather than "never recorded".
