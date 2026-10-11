@@ -181,7 +181,7 @@ export function Runs() {
           have no way back. There, Newer goes to the newest page. While the next page loads the buttons still hold
           this page's cursors, so they wait — a second click would push the same page twice. */}
       {(onAPage || runsQuery.data?.prevCursor || runsQuery.data?.nextCursor) && (
-        <nav aria-label="Pages of flow runs" className="flex items-center gap-2">
+        <nav aria-label="Pages of flow runs" className="flex items-center justify-end gap-2">
           <PageButton
             cursor={runsQuery.isPlaceholderData ? null : runsQuery.data?.prevCursor ?? (onAPage && !runs?.length ? NEWEST : null)}
             onGo={(c) => goToPage(c === NEWEST ? {} : { after: c })}
