@@ -91,8 +91,8 @@ describe('BuildRow — every control names its row', () => {
       </>,
       { wrapper: MemoryRouter },
     )
-    expect(screen.getByRole('link', { name: 'Flow runs of ios build 42, 1.2.0' }).getAttribute('href')).toBe('/automation/runs?source=all&build=1')
-    expect(screen.getByRole('link', { name: 'Flow runs of android build 42, 1.2.0' }).getAttribute('href')).toBe('/automation/runs?source=all&build=2')
+    expect(screen.getByRole('link', { name: 'Runs of ios build 42, 1.2.0' }).getAttribute('href')).toBe('/automation/runs?source=all&build=1')
+    expect(screen.getByRole('link', { name: 'Runs of android build 42, 1.2.0' }).getAttribute('href')).toBe('/automation/runs?source=all&build=2')
     expect(screen.getByRole('button', { name: 'Schedule deletion of ios build 42, 1.2.0' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Cancel scheduled deletion of android build 42, 1.2.0' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Start QA on ios build 42, 1.2.0' })).toBeTruthy()

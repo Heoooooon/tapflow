@@ -202,7 +202,7 @@ export function BuildRow({
         {/* Every recorded flow run of this build, CI and local. Offered on every row, Done included: the runs are
             what the build was judged by. */}
         <Button asChild size="sm" variant="outline">
-          <Link to={`/automation/runs?source=all&build=${build.id}`} aria-label={`Flow runs of ${rowName}`}>
+          <Link to={`/automation/runs?source=all&build=${build.id}`} aria-label={`Runs of ${rowName}`}>
             <SquarePlay className="mr-1.5 h-3.5 w-3.5" aria-hidden />
             Runs
           </Link>

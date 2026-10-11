@@ -76,6 +76,11 @@ describe('Runs list', () => {
     expect(row.textContent).toContain('1/2 passed · 1 failed')
     fireEvent.click(screen.getByText('GitHub Actions · main'), { metaKey: true })
     expect(open).toHaveBeenCalledWith('/automation/runs/r1', '_blank', 'noopener')
+    // A drag that selected text is a copy, not a click on the row.
+    const selection = vi.spyOn(window, 'getSelection').mockReturnValue({ toString: () => 'main' } as Selection)
+    await userEvent.click(screen.getByText('GitHub Actions · main'))
+    expect(probe.location).toBe('/automation/runs')
+    selection.mockRestore()
     await userEvent.click(screen.getByText('GitHub Actions · main'))
     await waitFor(() => expect(probe.location).toBe('/automation/runs/r1'))
   })
@@ -160,6 +165,7 @@ describe('Runs list', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Show older runs' }).getAttribute('aria-disabled')).toBe('false'))
     expect(screen.getByRole('link', { name: /, Passed, / })).toBeTruthy()
     expect(screen.queryByText("Couldn't load flow runs.")).toBeNull()
+    expect(screen.getByText("Couldn't load older runs.")).toBeTruthy()
   })
 
   it('pages back with the cursor the relay gave', async () => {

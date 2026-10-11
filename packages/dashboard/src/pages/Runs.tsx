@@ -173,7 +173,7 @@ export function Runs() {
       </div>
 
       {runsQuery.hasNextPage && (
-        <div>
+        <div className="flex items-center gap-3">
           {/* `aria-disabled`, not `disabled`: a disabled button drops the focus it holds to `body`. */}
           <Button
             variant="outline"
@@ -184,6 +184,10 @@ export function Runs() {
           >
             {runsQuery.isFetchingNextPage ? 'Loading…' : 'Show older runs'}
           </Button>
+          {/* The rows on screen stay (`isLoadingError` above), so the failure is said here; the button is the retry. */}
+          {runsQuery.isFetchNextPageError && !runsQuery.isFetchingNextPage && (
+            <span className="text-sm text-muted-foreground">Couldn&apos;t load older runs.</span>
+          )}
         </div>
       )}
     </div>
@@ -217,7 +221,9 @@ function RunRow({ run }: { run: RunListItem }) {
     <TableRow
       className="cursor-pointer"
       onClick={(e) => {
-        if ((e.target as HTMLElement).closest('a')) return
+        // A control's own click is its own, and so is a drag that selected text to copy (a branch, a source).
+        if ((e.target as HTMLElement).closest('a, button, input, [role="button"]')) return
+        if (window.getSelection()?.toString()) return
         if (e.metaKey || e.ctrlKey) window.open(href, '_blank', 'noopener')
         else void navigate(href)
       }}
