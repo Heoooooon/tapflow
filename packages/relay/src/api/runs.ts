@@ -465,13 +465,15 @@ export function handleListRuns(req: http.IncomingMessage, res: http.ServerRespon
   const args: (string | number)[] = []
   // A number that is not an id is refused rather than read: `build=abc` would match nothing, and a malformed cursor
   // would quietly answer the newest page — a valid-looking reply holding the wrong runs. An empty value is "none".
-  // **The text is checked, not `Number(text)`**, which reads " " as 0, "0x10" as 16 and "1e2" as 100.
+  // **The text is checked, not `Number(text)`**, which reads " " as 0, "0x10" as 16 and "1e2" as 100 — and then the
+  // number too, since a long enough run of digits becomes Infinity or loses its last digits.
   const ids: Partial<Record<'build' | 'before' | 'after', number>> = {}
   for (const key of ['build', 'before', 'after'] as const) {
     const v = q.get(key)
     if (!v) continue
-    if (!/^\d+$/.test(v)) return json(res, 400, { error: `${key} must be a non-negative integer` })
-    ids[key] = Number(v)
+    const id = Number(v)
+    if (!/^\d+$/.test(v) || !Number.isSafeInteger(id)) return json(res, 400, { error: `${key} must be a non-negative integer` })
+    ids[key] = id
   }
   if (ids.build !== undefined) { where.push('r.build_id = ?'); args.push(ids.build) }
   const status = q.get('status')
