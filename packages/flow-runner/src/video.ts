@@ -41,8 +41,11 @@ export interface VideoMeta {
   platform?: string
   clockBase: number
   flowStartMs: number
-  /** Present when the flow's stream cannot be kept, so the page can say why. */
-  notRecorded?: 'jpeg'
+  /**
+   * Present when the flow's stream cannot be kept, so the page can say why: `jpeg`, or `no-keyframe` — H.264 arrived
+   * but nothing a decoder could start from (scrcpy keys its SPS/PPS once per stream, so a later flow can have none).
+   */
+  notRecorded?: 'jpeg' | 'no-keyframe'
 }
 
 export interface VideoChunk {
@@ -102,6 +105,8 @@ export class VideoTap {
     chunkKeyframe: boolean
     total: number
     stopped: boolean
+    /** H.264 arrived during the flow, whether or not a video could start on it. */
+    sawH264: boolean
   } | null = null
 
   private readonly now: () => number
@@ -161,7 +166,7 @@ export class VideoTap {
   begin(sink: VideoSink, platform?: string): void {
     this.flow = {
       sink, flowStart: this.now(), ...(platform ? { platform } : {}), clockBase: null, opened: null, seq: 0,
-      chunk: [], chunkBytes: 0, chunkStart: 0, chunkKeyframe: false, total: 0, stopped: false,
+      chunk: [], chunkBytes: 0, chunkStart: 0, chunkKeyframe: false, total: 0, stopped: false, sawH264: false,
     }
     for (const p of [...this.kept]) this.append(p, 'h264')
   }
@@ -170,7 +175,15 @@ export class VideoTap {
   end(reason: 'done' | 'cancelled' = 'done'): void {
     const f = this.flow
     this.flow = null
-    if (!f || f.opened === null) return
+    if (!f) return
+    if (f.opened === null) {
+      // Frames came and none could start a video. Said, rather than leaving a flow with no video and no reason.
+      if (f.sawH264) {
+        f.sink.open(this.meta(f, 'h264', f.flowStart, 'no-keyframe'))
+        f.sink.end(-1, 'done')
+      }
+      return
+    }
     if (f.opened === 'h264' && !f.stopped) {
       this.cut(f)
       f.sink.end(f.seq - 1, reason)
@@ -193,11 +206,12 @@ export class VideoTap {
     if (f.opened === null) {
       if (codec === 'jpeg') {
         f.opened = 'jpeg'
-        f.sink.open(this.meta(f, 'jpeg', p.at))
+        f.sink.open(this.meta(f, 'jpeg', p.at, 'jpeg'))
         f.sink.end(-1, 'done')
         return
       }
       // A video starts on a frame a decoder can start from.
+      f.sawH264 = true
       if (!p.decodable) return
       f.clockBase = p.at
       f.opened = 'h264'
@@ -243,14 +257,14 @@ export class VideoTap {
     f.chunkBytes = 0
   }
 
-  private meta(f: NonNullable<VideoTap['flow']>, codec: 'h264' | 'jpeg', firstAt: number): VideoMeta {
+  private meta(f: NonNullable<VideoTap['flow']>, codec: 'h264' | 'jpeg', firstAt: number, notRecorded?: VideoMeta['notRecorded']): VideoMeta {
     return {
       formatVersion: VIDEO_FORMAT_VERSION,
       codec,
       ...(f.platform ? { platform: f.platform } : {}),
       clockBase: firstAt,
       flowStartMs: Math.max(0, f.flowStart - firstAt),
-      ...(codec === 'jpeg' ? { notRecorded: 'jpeg' as const } : {}),
+      ...(notRecorded ? { notRecorded } : {}),
     }
   }
 }

@@ -89,6 +89,20 @@ describe('VideoLane', () => {
     expect(calls.at(-1)!.body).toEqual({ lastSeq: 1, reason: 'truncated' })
   })
 
+  it('ends a failed flow\'s video as truncated when its last chunk is skipped after an earlier gap', async () => {
+    const { l, paths, calls } = lane((url, init) => (url.endsWith('/chunks/1') ? Response.json({}, { status: 500 }) : okAnswer(url, init)))
+    const v = l.video(0)
+    v.open(META)
+    v.chunk(chunk(0))
+    v.chunk(chunk(1))
+    v.failed = true
+    v.chunk(chunk(2, false))
+    v.end(2, 'done')
+    await l.drain(1000)
+    expect(paths()).toEqual(['0/video/open', '0/video/chunks/0', '0/video/chunks/1', '0/video/end'])
+    expect(calls.at(-1)!.body).toEqual({ lastSeq: 2, reason: 'truncated' })
+  })
+
   it('does not retry a lost chunk of a passed flow', async () => {
     let tries = 0
     const { l, calls } = lane((url, init) => {

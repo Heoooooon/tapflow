@@ -144,6 +144,20 @@ describe('VideoTap', () => {
     expect(sink.meta).toBeNull()
   })
 
+  it('says why when H.264 arrived but nothing a decoder could start from', () => {
+    // scrcpy keys its SPS/PPS once per stream: once that keyframe has aged out of the lead-in, a later flow has none.
+    const c = clock()
+    const tap = new VideoTap({ now: c.now })
+    const sink = new Sink()
+    tap.begin(sink)
+    tap.frame(h264(BARE_IDR(), true))
+    tap.frame(h264(P(), false))
+    tap.end()
+    expect(sink.meta).toMatchObject({ codec: 'h264', notRecorded: 'no-keyframe', clockBase: 10_000, flowStartMs: 0 })
+    expect(sink.chunks).toEqual([])
+    expect(sink.ends).toEqual([{ lastSeq: -1, reason: 'done' }])
+  })
+
   it('opens nothing for a flow during which no frame arrived', () => {
     const tap = new VideoTap({ now: clock().now })
     const sink = new Sink()

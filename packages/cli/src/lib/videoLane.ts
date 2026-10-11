@@ -155,11 +155,15 @@ export class VideoLane {
     }
     const { chunk } = item
     if (v.closed) return
+    const isTail = (): boolean => v.failed && chunk.seq === v.newestSeq
     if (v.awaitingKeyframe) {
-      if (!chunk.keyframe) return
+      // Skipped after a gap, and when it is a failed flow's last chunk, the failure's moment is what is missing.
+      if (!chunk.keyframe) {
+        if (isTail()) v.tailLost = true
+        return
+      }
       v.awaitingKeyframe = false
     }
-    const isTail = (): boolean => v.failed && chunk.seq === v.newestSeq
     for (let attempt = 0; ; attempt++) {
       let res: Response | null = null
       try {

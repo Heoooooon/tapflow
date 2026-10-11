@@ -126,9 +126,8 @@ export const INBOUND_DISPOSITION = {
       + 'to be shown.',
   },
   'session:deviceInfo': {
-    ignored: 'No consumer, here or anywhere. Both agents send it and the relay caches and replays it on '
-      + 'join, and nothing reads the result — the viewer takes device name and OS from `agents:listed` '
-      + 'instead. Kept on the wire because third-party agents send it; the field to display it is a '
+    ignored: 'No consumer here: the viewer takes device name and OS from `agents:listed` instead. The only '
+      + 'reader in the repo is flow-runner, which copies it into a run\'s video (A4); displaying it is a '
       + 'feature nobody has asked for, not a handler someone forgot.',
   },
   'watch:started': { at: 'useWatchSession' },

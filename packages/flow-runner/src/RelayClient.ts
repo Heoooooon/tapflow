@@ -392,7 +392,8 @@ export class RelayClient {
       ws.once('error', (e) => reject(new RelayUnavailableError(`relay connection failed: ${(e as Error).message}`)))
       ws.on('message', (data, isBinary) => {
         if (isBinary) {
-          this.streamListener?.frame(data as Buffer)
+          // A listener's failure is its own: it must never take this socket's handler, and with it every reply.
+          try { this.streamListener?.frame(data as Buffer) } catch { /* the video loses a frame */ }
           return
         }
         let msg: RelayMsg
@@ -400,7 +401,9 @@ export class RelayClient {
           msg = JSON.parse((data as Buffer).toString()) as RelayMsg
         } catch { return /* ignore malformed */ }
         if (this.streamListener && (msg['type'] === 'session:chrome' || msg['type'] === 'session:deviceInfo')) {
-          this.streamListener.event(msg['type'] === 'session:chrome' ? 'chrome' : 'deviceInfo', msg['payload'])
+          try {
+            this.streamListener.event(msg['type'] === 'session:chrome' ? 'chrome' : 'deviceInfo', msg['payload'])
+          } catch { /* as for a frame: the video's loss, not the run's */ }
         }
         try {
           this.dispatch(msg)
