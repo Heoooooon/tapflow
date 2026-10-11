@@ -254,7 +254,8 @@ describe('cmdFlowRun records the run on the relay (A3)', () => {
       status: 'failed', failureKind: 'product', deviceId: 'dev1', deviceName: 'dev', platform: 'ios',
     })
     expect(relay.calls[3]!.body).toEqual({ status: 'failed', exitCode: 1, failureKind: 'product' })
-    expect(console.log).toHaveBeenCalledWith('recorded as run run-1')
+    // Outside CI, with the page's link on the watch link's origin.
+    expect(console.log).toHaveBeenCalledWith('recorded as run run-1: http://localhost:4000/automation/runs/run-1')
     expect(process.exitCode).toBe(1)
   })
 
@@ -294,6 +295,8 @@ describe('cmdFlowRun records the run on the relay (A3)', () => {
     expect(relay.calls[0]!.body).toMatchObject({
       ci: { provider: 'github', branch: 'main', commit: 'abc', jobUrl: 'https://github.com/o/r/actions/runs/42' },
     })
+    // The id only: the link would put the relay's address in the CI log.
+    expect(console.log).toHaveBeenCalledWith('recorded as run run-1')
   })
 
   it('records nothing with --no-record, and says nothing about it', async () => {
@@ -331,7 +334,7 @@ describe('cmdFlowRun records the run on the relay (A3)', () => {
     fakeRelay((u) => u.endsWith('/finish') ? Response.json({ error: 'boom' }, { status: 500 }) : defaultAnswer(u))
     mocks.runFlow.mockResolvedValue(resultOf('passed'))
     await cmdFlowRun([file], { token: 'tflw_pat_x' })
-    expect(console.log).toHaveBeenCalledWith('recorded as run run-1 (incomplete)')
+    expect(console.log).toHaveBeenCalledWith('recorded as run run-1 (incomplete): http://localhost:4000/automation/runs/run-1')
     expect(process.exitCode).toBe(0)
   })
 

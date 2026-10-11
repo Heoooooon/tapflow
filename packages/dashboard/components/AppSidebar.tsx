@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useTheme } from 'next-themes'
-import { LayoutGrid, LogOut, Settings, Users, KeyRound, Monitor, BookOpen } from 'lucide-react'
+import { LayoutGrid, LogOut, Settings, Users, KeyRound, Monitor, BookOpen, SquarePlay } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -28,6 +28,7 @@ import { UserAvatar } from '@/components/UserAvatar'
 
 const navItems = [
   { label: 'App Center', href: '/app-center', icon: LayoutGrid },
+  { label: 'Flow Runs', href: '/automation/runs', icon: SquarePlay },
   { label: 'Mac Resources', href: '/mac-resources', icon: Monitor },
 ]
 

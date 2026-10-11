@@ -101,6 +101,8 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
   let joinedSessionId: string | undefined
   let sawProductFailure = false
   let errorMessage: string | undefined
+  /** The dashboard this run's links point at — the watch link's origin, so the two agree. */
+  let dashboardBase: string | undefined
 
   // A cancelled run still leaves the session and says so in its record, then exits as the signal would have.
   // A second signal does not wait for any of that.
@@ -182,6 +184,7 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
     const { sessionId, device } = await resolveSession(client, opts)
     const { watchUrl } = await client.joinSession(sessionId)
     joinedSessionId = sessionId
+    dashboardBase = watchUrl
     // Whoever started the run can watch it live from here. **Not in CI**: the link is the relay's address
     // rewritten (`wss://host` → `https://host/…`), so a secret holding the relay URL does not mask it, and a
     // public repository's log would show the host the docs keep in a secret.
@@ -267,8 +270,12 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
         ...(errorMessage ? { errorMessage } : {}),
       })
       const { runId, complete } = await recorder.drain(RECORD_DRAIN_MS)
-      // Incomplete has already been warned about; the id is still worth having to find what did arrive.
-      if (runId) console.log(complete ? `recorded as run ${runId}` : `recorded as run ${runId} (incomplete)`)
+      // Incomplete has already been warned about; the id is still worth having to find what did arrive. The page's
+      // link only outside CI, for the watch link's reason: it is the relay's address, and a log may be public.
+      if (runId) {
+        const page = dashboardBase && !runningInCI() ? `: ${new URL(`/automation/runs/${encodeURIComponent(runId)}`, dashboardBase).toString()}` : ''
+        console.log(`recorded as run ${runId}${complete ? '' : ' (incomplete)'}${page}`)
+      }
     }
     if (!cancelling) client?.disconnect()
     process.off('SIGINT', onSignal)

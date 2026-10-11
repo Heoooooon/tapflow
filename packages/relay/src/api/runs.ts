@@ -463,37 +463,65 @@ export function handleListRuns(req: http.IncomingMessage, res: http.ServerRespon
   const q = new URL(req.url ?? '/', 'http://x').searchParams
   const where: string[] = []
   const args: (string | number)[] = []
-  const build = q.get('build')
-  if (build !== null) { where.push('r.build_id = ?'); args.push(Number(build)) }
+  // A number that is not an id is refused rather than read: `build=abc` would match nothing, and a malformed cursor
+  // would quietly answer the newest page — a valid-looking reply holding the wrong runs. An empty value is "none".
+  // **The text is checked, not `Number(text)`**, which reads " " as 0, "0x10" as 16 and "1e2" as 100 — and then the
+  // number too, since a long enough run of digits becomes Infinity or loses its last digits.
+  const ids: Partial<Record<'build' | 'before' | 'after', number>> = {}
+  for (const key of ['build', 'before', 'after'] as const) {
+    const v = q.get(key)
+    if (!v) continue
+    const id = Number(v)
+    if (!/^\d+$/.test(v) || !Number.isSafeInteger(id)) return json(res, 400, { error: `${key} must be a non-negative integer` })
+    ids[key] = id
+  }
+  if (ids.build !== undefined) { where.push('r.build_id = ?'); args.push(ids.build) }
   const status = q.get('status')
   if (status !== null) { where.push('r.status = ?'); args.push(status) }
   const ci = q.get('ci')
   if (ci === '1' || ci === '0') { where.push('r.is_ci = ?'); args.push(Number(ci)) }
   const flow = q.get('flow')
   if (flow !== null) {
-    // The planned list, not the reported rows: a run that never reached the flow still ran with it.
-    where.push(`EXISTS (SELECT 1 FROM json_each(r.flows_json) j WHERE json_extract(j.value, '$.name') = ?)`)
+    // The planned list, not the reported rows: a run that never reached the flow still ran with it. A part of the
+    // name, as the runs page searches as you type. SQLite's `lower` folds ASCII only, so "Über" is still
+    // case-sensitive; Hangul has no case.
+    where.push(`EXISTS (SELECT 1 FROM json_each(r.flows_json) j WHERE instr(lower(json_extract(j.value, '$.name')), lower(?)) > 0)`)
     args.push(flow)
   }
-  const before = q.get('before')
-  if (before !== null) { where.push('r.seq < ?'); args.push(Number(before)) }
   const limitParam = Number(q.get('limit'))
   const limit = Number.isInteger(limitParam) && limitParam > 0 ? Math.min(limitParam, PAGE_MAX) : PAGE_DEFAULT
 
-  const rows = getDb().prepare(`
+  // Pages by cursor in both directions: `before` for the page of older runs, `after` for newer ones. Not by number,
+  // because new runs keep arriving on top and a page number would slide. `after` reads upward from the cursor and
+  // is turned back to newest first, so it is the page directly above the one it came from.
+  const filtered = (extra: string | null) => [...where, ...(extra ? [extra] : [])]
+  const sql = (conds: string[], order: 'ASC' | 'DESC') => `
     SELECT r.*,
            (SELECT COUNT(*) FROM flow_run_flows f WHERE f.run_seq = r.seq AND f.status = 'passed') AS flows_passed,
            (SELECT COUNT(*) FROM flow_run_flows f WHERE f.run_seq = r.seq AND f.status = 'failed') AS flows_failed
       FROM flow_runs r
-     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-     ORDER BY r.seq DESC
-     LIMIT ?
-  `).all(...args, limit + 1) as (RunRow & { flows_passed: number; flows_failed: number })[]
+     ${conds.length ? `WHERE ${conds.join(' AND ')}` : ''}
+     ORDER BY r.seq ${order}
+     LIMIT ?`
+  type Row = RunRow & { flows_passed: number; flows_failed: number }
+  const db = getDb()
+  const { before, after } = ids
+  const page = after !== undefined
+    ? (db.prepare(sql(filtered('r.seq > ?'), 'ASC')).all(...args, after, limit) as Row[]).reverse()
+    : before !== undefined
+      ? db.prepare(sql(filtered('r.seq < ?'), 'DESC')).all(...args, before, limit) as Row[]
+      : db.prepare(sql(filtered(null), 'DESC')).all(...args, limit) as Row[]
 
-  const page = rows.slice(0, limit)
+  // A cursor only where a page exists past it, so the page's Newer and Older are offered only when they lead somewhere.
+  const exists = (cond: string, seq: number) => Boolean(
+    db.prepare(`SELECT 1 FROM flow_runs r WHERE ${filtered(cond).join(' AND ')} LIMIT 1`).get(...args, seq),
+  )
+  const first = page[0]
+  const last = page[page.length - 1]
   json(res, 200, {
     items: page.map((r) => ({ ...runSummary(r), flowsPassed: r.flows_passed, flowsFailed: r.flows_failed })),
-    nextCursor: rows.length > limit ? String(page[page.length - 1].seq) : null,
+    nextCursor: last && exists('r.seq < ?', last.seq) ? String(last.seq) : null,
+    prevCursor: first && exists('r.seq > ?', first.seq) ? String(first.seq) : null,
   })
 }
 

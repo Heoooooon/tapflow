@@ -190,7 +190,7 @@ describe('QASession — Full reset applies to exactly one pick (#439)', () => {
     await openDeviceList(user, MIXED_CAPABILITY_AGENTS)
 
     await user.click(screen.getByRole('switch'))
-    await user.click(screen.getByRole('button', { name: '← All Macs' }))
+    await user.click(screen.getByRole('button', { name: BUILD_LABEL }))
     await user.click(screen.getByText('legacy-mac'))
     await user.click(screen.getByText('iPhone 14'))
 
