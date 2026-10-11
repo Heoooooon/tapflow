@@ -463,8 +463,14 @@ export function handleListRuns(req: http.IncomingMessage, res: http.ServerRespon
   const q = new URL(req.url ?? '/', 'http://x').searchParams
   const where: string[] = []
   const args: (string | number)[] = []
+  // A number that is not an id is refused rather than read: `build=abc` would match nothing, and a malformed cursor
+  // would quietly answer the newest page — a valid-looking reply holding the wrong runs. An empty value is "none".
+  for (const key of ['build', 'before', 'after']) {
+    const v = q.get(key)
+    if (v && nonNegInt(Number(v)) === null) return json(res, 400, { error: `${key} must be a non-negative integer` })
+  }
   const build = q.get('build')
-  if (build !== null) { where.push('r.build_id = ?'); args.push(Number(build)) }
+  if (build) { where.push('r.build_id = ?'); args.push(Number(build)) }
   const status = q.get('status')
   if (status !== null) { where.push('r.status = ?'); args.push(status) }
   const ci = q.get('ci')

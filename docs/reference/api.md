@@ -862,6 +862,8 @@ Query:
   limit   number     optional  Default 50, at most 100
 ```
 
+A `build`, `before` or `after` that is not a non-negative integer gets `400`. An empty value counts as not given.
+
 **Response `200`**
 
 ```json

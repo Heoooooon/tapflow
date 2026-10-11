@@ -414,6 +414,10 @@ describe('flow run records', () => {
     const above = await call('GET', `/api/v1/runs?limit=1&after=${older.body.prevCursor}`, bearer(PAT_VIEW))
     expect(above.body.items.map((i: { id: string }) => i.id)).toEqual([ci])
     expect(above.body.prevCursor).not.toBeNull()
+    // A cursor or build id that is not one is refused, not read as the newest page or as nothing.
+    for (const q of ['before=abc', 'after=1.5', 'before=-3', 'build=abc']) {
+      expect((await call('GET', `/api/v1/runs?${q}`, bearer(PAT_VIEW))).status).toBe(400)
+    }
     // An empty cursor is no cursor.
     const empty = await call('GET', '/api/v1/runs?limit=2&after=', bearer(PAT_VIEW))
     expect(empty.body.items.map((i: { id: string }) => i.id)).toEqual([buildless, ci])
