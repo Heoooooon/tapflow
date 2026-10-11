@@ -117,9 +117,9 @@ describe('Runs list', () => {
     await screen.findByRole('link', { name: /^Passed run of/ })
     await userEvent.click(screen.getByRole('combobox', { name: 'Status' }))
     await userEvent.click(await screen.findByRole('option', { name: 'Failed' }))
-    await screen.findByText("Couldn't load runs.")
+    await screen.findByText("Couldn't load flow runs.")
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
-    expect(screen.getByText("Couldn't load runs.")).toBeTruthy()
+    expect(screen.getByText("Couldn't load flow runs.")).toBeTruthy()
     expect(screen.queryByRole('link', { name: /^Passed run of/ })).toBeNull()
     answerRetry(Response.json({ items: [], nextCursor: null }))
     await screen.findByText('No runs match these filters.')
@@ -129,10 +129,21 @@ describe('Runs list', () => {
     let fail = true
     stubRelay(() => fail ? new Response('', { status: 500 }) : Response.json({ items: [listItem()], nextCursor: null }))
     renderAt('/automation/runs')
-    await screen.findByText("Couldn't load runs.")
+    await screen.findByText("Couldn't load flow runs.")
     fail = false
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
     await screen.findByRole('link', { name: /^Passed run of/ })
+  })
+
+  it('keeps the rows on screen when loading older runs fails', async () => {
+    stubRelay((url) => url.includes('before=')
+      ? new Response('', { status: 500 })
+      : Response.json({ items: [listItem()], nextCursor: '41' }))
+    renderAt('/automation/runs')
+    await userEvent.click(await screen.findByRole('button', { name: 'Show older runs' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Show older runs' }).getAttribute('aria-disabled')).toBe('false'))
+    expect(screen.getByRole('link', { name: /^Passed run of/ })).toBeTruthy()
+    expect(screen.queryByText("Couldn't load flow runs.")).toBeNull()
   })
 
   it('pages back with the cursor the relay gave', async () => {

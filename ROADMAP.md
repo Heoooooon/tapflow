@@ -173,7 +173,7 @@ Usable:
 - [ ] **Agent action timeline** on that page. The relay passes the agent's actions to watchers as they
   happen and does not store them.
 - [x] **Flow run records**: the flow, per-step results, the failure screenshot, and whether the product
-  or the environment failed. Records attach to the build and are deleted with it. The Runs page is where
+  or the environment failed. Records attach to the build and are deleted with it. The Flow Runs page is where
   CI runs are seen, live and afterwards, filtered by build, status and flow.
 - [x] **Run recording** that works without a browser, as in CI.
 

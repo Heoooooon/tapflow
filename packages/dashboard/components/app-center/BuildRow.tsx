@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { ListChecks, Play, Trash2, TimerOff } from 'lucide-react';
+import { Play, SquarePlay, Trash2, TimerOff } from 'lucide-react';
 import type { Build } from '@/lib/types';
 import { STATUS_TONE, buildRowName, formatDeletionCountdown } from '@/lib/build-format';
 
@@ -202,8 +202,8 @@ export function BuildRow({
         {/* Every recorded flow run of this build, CI and local. Offered on every row, Done included: the runs are
             what the build was judged by. */}
         <Button asChild size="sm" variant="outline">
-          <Link to={`/automation/runs?source=all&build=${build.id}`} aria-label={`Runs of ${rowName}`}>
-            <ListChecks className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+          <Link to={`/automation/runs?source=all&build=${build.id}`} aria-label={`Flow runs of ${rowName}`}>
+            <SquarePlay className="mr-1.5 h-3.5 w-3.5" aria-hidden />
             Runs
           </Link>
         </Button>

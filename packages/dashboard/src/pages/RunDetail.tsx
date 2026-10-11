@@ -33,7 +33,7 @@ export function RunDetail() {
   useEffect(() => {
     setBreadcrumb(
       <span className="flex items-center gap-1.5 text-sm">
-        <Link to="/automation/runs" className="text-muted-foreground hover:text-foreground">Runs</Link>
+        <Link to="/automation/runs" className="text-muted-foreground hover:text-foreground">Flow Runs</Link>
         <span className="text-muted-foreground">/</span>
         <span className="font-medium">{crumb}</span>
       </span>,
@@ -45,7 +45,7 @@ export function RunDetail() {
     <div className="flex flex-col gap-5 p-6">
       <div>
         <Button asChild variant="ghost" size="sm" className="-ml-2">
-          <Link to="/automation/runs"><ArrowLeft className="mr-1.5 h-3.5 w-3.5" aria-hidden />All runs</Link>
+          <Link to="/automation/runs"><ArrowLeft className="mr-1.5 h-3.5 w-3.5" aria-hidden />All flow runs</Link>
         </Button>
       </div>
       {run ? <RunBody run={run} />

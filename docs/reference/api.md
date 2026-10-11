@@ -787,7 +787,7 @@ Download a recording file. Returns `404` for expired files.
 
 ## Runs {#runs}
 
-The record `tapflow flow run` leaves for each run. The CLI writes it with its token and the dashboard's [Runs](/automation/runs) page reads it. You rarely call these yourself, but the read endpoints are there if you build your own CI dashboard.
+The record `tapflow flow run` leaves for each run. The CLI writes it with its token and the dashboard's [Flow Runs](/automation/runs) page reads it. You rarely call these yourself, but the read endpoints are there if you build your own CI dashboard.
 
 The write endpoints (`POST`) need the `builds:write` scope and a role that may write, and only the user who created a run may write to it; a run created with a PAT takes writes from that PAT only. Another user or token gets `403`, and a write to a finished run gets `409`. JSON bodies are capped at 1 MB.
 

@@ -1,25 +1,25 @@
 ---
-title: Runs
-description: "See tapflow flow run's records on the dashboard's Runs page: CI and local runs apart, each flow's result and failure screenshot, and a link to watch the device while a run is in progress."
+title: Flow Runs
+description: "See tapflow flow run's records on the dashboard's Flow Runs page: CI and local runs apart, each flow's result and failure screenshot, and a link to watch the device while a run is in progress."
 ---
 
-# Runs
+# Flow Runs
 
 ::: warning Experimental
 The flow runner and its run records are part of tapflow's **AI automation axis**, which is experimental. The mature path is the manual QA dashboard.
 :::
 
-The dashboard's **Runs** page shows the records `tapflow flow run` leaves. When CI runs your flows on every build, anyone on the team can see in a browser which flow failed on which build, and why. A failure in the app is kept apart from an environment problem such as the device, the agent or the relay.
+The dashboard's **Flow Runs** page shows the records `tapflow flow run` leaves. When CI runs your flows on every build, anyone on the team can see in a browser which flow failed on which build, and why. A failure in the app is kept apart from an environment problem such as the device, the agent or the relay.
 
 A run is recorded when the runner has a token. See [Recording runs](#recording) to set it up.
 
 ## How to use {#how-to-use}
 
-1. Open **Runs** in the dashboard's sidebar. It opens on CI runs.
-2. Pick where the runs came from with **CI** / **Local** / **All** at the top. You can narrow the list by status (**Any status**, **Running**, **Passed**, **Failed**, **Cancelled**) and by flow name; part of a name is enough.
+1. Open **Flow Runs** in the dashboard's sidebar. It opens on CI runs.
+2. Pick where the runs came from with **All** / **CI** / **Local** at the top. You can narrow the list by status (**Any status**, **Running**, **Passed**, **Failed**, **Cancelled**) and by flow name; part of a name is enough.
 3. Select a row's status badge to open that run.
 
-The **Runs** button on a build row in App Center lists that build's runs only. The filters are part of the address, so a filtered list is a link you can share.
+The **Runs** button on a build row in App Center lists that build's flow runs only. The filters are part of the address, so a filtered list is a link you can share.
 
 ### A run's page {#run-detail}
 
@@ -31,7 +31,7 @@ A run's page lists its flows in the order they ran.
 
 ### Watch a run in progress {#watch-a-run}
 
-While a run is in progress, the list and the run's page refresh every few seconds. **Watch the device** on the run's page shows the device the runner is driving, live and read-only: nothing you click reaches the device. Up to 4 people can watch a session.
+While a run is in progress, the run's page refreshes every few seconds, and so does the list until you load older runs. **Watch the device** on the run's page shows the device the runner is driving, live and read-only: nothing you click reaches the device. Up to 4 people can watch a session.
 
 ## What the statuses mean {#statuses}
 

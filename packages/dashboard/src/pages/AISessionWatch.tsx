@@ -9,7 +9,7 @@ import { holderKindLabel, watchEndText, watchRefusalText } from '@/lib/aiSession
 
 /**
  * **Watch, read-only, the device an AI agent is driving.** Reached through a link, never a list of AI sessions:
- * the one the MCP server hands the person who asked it to test, and the one a running flow run offers on its Runs
+ * the one the MCP server hands the person who asked it to test, and the one a running flow run offers on its Flow Runs
  * page, which the whole team may open.
  */
 export function AISessionWatch() {

@@ -39,7 +39,7 @@ export function Runs() {
 
   const { setNode: setBreadcrumb } = useBreadcrumb()
   useEffect(() => {
-    setBreadcrumb(<span className="text-sm font-medium">Runs</span>)
+    setBreadcrumb(<span className="text-sm font-medium">Flow Runs</span>)
     return () => setBreadcrumb(null)
   }, [setBreadcrumb])
 
@@ -91,7 +91,9 @@ export function Runs() {
   // into a list of runs that do not match the filters on screen — with focus moved into them. `isFetchedAfterMount`
   // keeps it to the failure that was on screen.
   const refetchingAFailure = runsQuery.isFetchedAfterMount && (runsQuery.isPlaceholderData || runsQuery.isLoading)
-  const view = refetchingAFailure ? 'error' : listView({ data: runs, isError: runsQuery.isError })
+  // `isLoadingError`, not `isError`: a failed poll or a failed "Show older runs" keeps the rows already on screen,
+  // where `isError` turned the whole list into the failure and moved focus to its button.
+  const view = refetchingAFailure ? 'error' : listView({ data: runs, isError: runsQuery.isLoadingError })
   const sourceTabsRef = useRef<HTMLButtonElement>(null)
   const listRegion = useFocusAfterSwap<HTMLTableSectionElement>(view, sourceTabsRef)
 
@@ -102,7 +104,7 @@ export function Runs() {
   return (
     <div className="flex flex-col gap-5 p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold tracking-tight">Runs</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Flow Runs</h1>
         <p className="text-sm text-muted-foreground">
           What <TechLabel>tapflow flow run</TechLabel> recorded: each flow&apos;s result, its steps and a screenshot of a failure.
         </p>
@@ -111,9 +113,11 @@ export function Runs() {
       <div className="flex flex-wrap items-center gap-3">
         <Tabs value={source} onValueChange={(v) => setParam('source', v === 'ci' ? null : v)}>
           <TabsList aria-label="Where the run came from">
-            <TabsTrigger ref={sourceTabsRef} value="ci">CI</TabsTrigger>
+            {/* Broadest first, as filters read; the page still opens on CI (see `source`). Focus falls back to the
+                first tab when a swap removes the focused row. */}
+            <TabsTrigger ref={sourceTabsRef} value="all">All</TabsTrigger>
+            <TabsTrigger value="ci">CI</TabsTrigger>
             <TabsTrigger value="local">Local</TabsTrigger>
-            <TabsTrigger value="all">All</TabsTrigger>
           </TabsList>
         </Tabs>
         <Select value={status ?? 'any'} onValueChange={(v) => setParam('status', v === 'any' ? null : v)}>
@@ -159,7 +163,7 @@ export function Runs() {
             <ListStateRow
               view={view}
               colSpan={6}
-              noun="runs"
+              noun="flow runs"
               emptyText={emptyText(source, Boolean(status || flow || build !== undefined))}
               onRetry={() => void runsQuery.refetch()}
             />
