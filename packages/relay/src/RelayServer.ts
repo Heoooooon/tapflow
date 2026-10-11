@@ -103,7 +103,7 @@ import { handleListTokens, handleCreateToken, handleRevokeToken } from './api/to
 import { handleGetSettings, handleUpdateSettings } from './api/settings.js'
 import { handleUpdateProfile } from './api/profile.js'
 import { handleUploadRecording, handleListRecordings, handleDownloadRecording, purgeExpiredRecordings } from './api/recordings.js'
-import { handleEndVideo, handleOpenVideo, handleVideoChunk, handleVideoData, handleVideoIndex, purgeRunVideos, runVideosDirFor } from './api/runVideos.js'
+import { handleEndVideo, handleOpenVideo, handleVideoChunk, handleVideoData, handleVideoIndex, purgeRunVideos, releaseStaleVideoReservations, runVideosDirFor } from './api/runVideos.js'
 import { abandonRunsOf, handleCreateRun, handleFinishRun, handleGetFlowScreenshot, handleGetRun, handleListRuns, handleReportFlow, handleUploadFlowScreenshot, purgeExpiredRuns, runScreenshotsDirFor, type RunHolders } from './api/runs.js'
 import { handleListAgents, handleGetAgentResources } from './api/agents.js'
 
@@ -661,6 +661,8 @@ export class RelayServer {
       purgeExpiredRuns(this.runScreenshotsDir, this.runVideosDir, this.runHolders)
       purgeRunVideos(this.runVideosDir, this.runHolders)
     }
+    // Before the first purge or write: no write in flight survived the last process.
+    releaseStaleVideoReservations()
     purgeBuildsAndRuns()
     this.purgeBuildsTimer = setInterval(purgeBuildsAndRuns, 24 * 60 * 60 * 1000)
     this.purgeBuildsTimer.unref()

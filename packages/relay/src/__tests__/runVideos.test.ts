@@ -208,6 +208,44 @@ describe('flow run videos', () => {
     expect((await index(id)).endReason).toBe('size-limit')
   })
 
+  it('refuses a chunk whose body was still arriving when the video was ended', async () => {
+    const id = await newRun()
+    await open(id)
+    let finish!: () => void
+    const body = new ReadableStream<Uint8Array>({
+      start(c) { c.enqueue(new Uint8Array([1, 2])); finish = () => c.close() },
+    })
+    const pending = fetch(`http://127.0.0.1:${port}${v(id)}/chunks/0`, {
+      method: 'POST', body, duplex: 'half', headers: { ...bearer(PAT_CI), 'X-Start-Ms': '0', 'X-Keyframe': '1' },
+    } as RequestInit)
+    // The chunk has passed its first check and is reading its body; the end call lands now.
+    await new Promise((r) => setTimeout(r, 50))
+    expect((await end(id, -1, 'cancelled')).status).toBe(200)
+    finish()
+    expect((await pending).status).toBe(409)
+    expect((await index(id)).bytes).toBe(0)
+  })
+
+  it('refuses a seq or lastSeq past the bound, so one request cannot make the index list millions of gaps', async () => {
+    const id = await newRun()
+    await open(id)
+    expect((await chunk(id, 10_001, Buffer.from('x'))).status).toBe(400)
+    expect((await chunk(id, 10_000, Buffer.from('x'))).status).toBe(200)
+    expect((await end(id, 9007199254740991)).status).toBe(400)
+    expect((await end(id, 10_001)).status).toBe(400)
+  })
+
+  it('releases reservations a crashed write left behind when the relay starts', async () => {
+    const id = await finishedVideo('failed', 10)
+    getDb().prepare('UPDATE flow_run_videos SET reserved_bytes = 5000').run()
+    await server.stop()
+    server = new RelayServer({ port: 0, uploadsDir })
+    await server.start()
+    port = (server.address() as { port: number }).port
+    expect((await call('GET', '/api/v1/settings', adminCookie())).body.video_usage_bytes).toBe(10)
+    expect((await index(id)).bytes).toBe(10)
+  })
+
   it('needs a view credential to read', async () => {
     const id = await newRun()
     await open(id)
@@ -270,8 +308,10 @@ describe('flow run videos', () => {
   })
 
   it('counts both the cap and the disk\'s floor', () => {
-    expect(shortfall(900, 100, 1000, { free: 10_000, floor: 0 })).toEqual({ overCap: 0, overDisk: -9900 })
-    expect(shortfall(0, 100, 1000, { free: 1050, floor: 1000 })).toEqual({ overCap: -900, overDisk: 50 })
+    expect(shortfall({ used: 900, reserved: 0 }, 100, 1000, { free: 10_000, floor: 0 })).toEqual({ overCap: 0, overDisk: -9900 })
+    expect(shortfall({ used: 0, reserved: 0 }, 100, 1000, { free: 1050, floor: 1000 })).toEqual({ overCap: -900, overDisk: 50 })
+    // Bytes another writer reserved are not on disk yet, so free space does not show them; they still count.
+    expect(shortfall({ used: 0, reserved: 40 }, 30, 1000, { free: 1050, floor: 1000 }).overDisk).toBe(20)
   })
 
   // ── retention and deletion ────────────────────────────────────────────────
@@ -292,6 +332,13 @@ describe('flow run videos', () => {
     expect((await index(recent)).evicted).toBe(false)
     expect((await index(gone)).evicted).toBe(true)
     expect(fs.existsSync(path.join(videosDir, 'stray.tfv'))).toBe(false)
+  })
+
+  it('marks every video gone when a restore left the whole directory out', async () => {
+    const id = await finishedVideo('failed', 10)
+    fs.rmSync(videosDir, { recursive: true })
+    purgeRunVideos(videosDir, noHolders)
+    expect((await index(id)).evicted).toBe(true)
   })
 
   it('deletes a build\'s videos with the build', async () => {

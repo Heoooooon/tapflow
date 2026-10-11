@@ -24,6 +24,11 @@ const MAX_VIDEO_BYTES = 100 * 1024 * 1024
 /** Free space the relay keeps for itself whatever the cap says: a full disk takes SQLite, sign-in and uploads down. */
 const MIN_FREE_BYTES = 1024 * 1024 * 1024
 const MIN_FREE_FRACTION = 0.1
+/**
+ * The highest chunk number taken. The index lists every missing number up to the last one, synchronously, so an
+ * unbounded seq or `lastSeq` would let one request hang the relay. ~5.5 h of 2 s chunks, far past any flow.
+ */
+const MAX_SEQ = 10_000
 
 const END_REASONS = new Set(['done', 'cancelled', 'size-limit', 'storage-full', 'runner-lost', 'truncated'])
 
@@ -133,9 +138,23 @@ export function diskRoomFor(dir: string): DiskRoom {
 }
 
 export function videoUsageBytes(): number {
-  const row = getDb().prepare('SELECT COALESCE(SUM(bytes + reserved_bytes), 0) AS used FROM flow_run_videos WHERE evicted_at IS NULL')
-    .get() as { used: number }
-  return row.used
+  const { used, reserved } = videoUsage()
+  return used + reserved
+}
+
+/** Committed bytes and bytes reserved by writes in flight, over the videos still kept. */
+function videoUsage(): { used: number; reserved: number } {
+  return getDb().prepare(`
+    SELECT COALESCE(SUM(bytes), 0) AS used, COALESCE(SUM(reserved_bytes), 0) AS reserved FROM flow_run_videos WHERE evicted_at IS NULL
+  `).get() as { used: number; reserved: number }
+}
+
+/**
+ * A reservation lives only as long as the write holding it, and no write survives a restart: a crash between reserve
+ * and release would otherwise count those bytes against the cap forever. Called once at start, before any write.
+ */
+export function releaseStaleVideoReservations(): void {
+  getDb().prepare('UPDATE flow_run_videos SET reserved_bytes = 0 WHERE reserved_bytes != 0').run()
 }
 
 export function videoSettings(): { passRetentionDays: number; storageCapBytes: number } {
@@ -149,10 +168,14 @@ export function videoSettings(): { passRetentionDays: number; storageCapBytes: n
 
 /**
  * How far `len` more bytes would go past the cap and past the disk's floor; zero or less is room. Both count: the
- * cap is the operator's setting, the floor is what the disk can actually give.
+ * cap is the operator's setting, the floor is what the disk can actually give. Reserved bytes count against the
+ * floor too: they are not on disk yet, so free space does not show them, and two writers to different videos would
+ * otherwise both see the same free space.
  */
-export function shortfall(usage: number, len: number, capBytes: number, room: DiskRoom): { overCap: number; overDisk: number } {
-  return { overCap: usage + len - capBytes, overDisk: len - (room.free - room.floor) }
+export function shortfall(
+  usage: { used: number; reserved: number }, len: number, capBytes: number, room: DiskRoom,
+): { overCap: number; overDisk: number } {
+  return { overCap: usage.used + usage.reserved + len - capBytes, overDisk: usage.reserved + len - (room.free - room.floor) }
 }
 
 /**
@@ -162,7 +185,7 @@ export function shortfall(usage: number, len: number, capBytes: number, room: Di
  */
 function makeRoom(len: number, videosDir: string, room: DiskRoom, keep: { runSeq: number; idx: number }): string[] | null {
   const db = getDb()
-  let { overCap, overDisk } = shortfall(videoUsageBytes(), len, videoSettings().storageCapBytes, room)
+  let { overCap, overDisk } = shortfall(videoUsage(), len, videoSettings().storageCapBytes, room)
   if (overCap <= 0 && overDisk <= 0) return []
 
   const candidates = db.prepare(`
@@ -199,7 +222,7 @@ export async function handleVideoChunk(
   if (!run) return
   const idx = flowIndex(run, params.idx)
   if (idx === null) return json(res, 404, { error: 'No such flow in this run' })
-  if (!/^\d+$/.test(params.seq) || !Number.isSafeInteger(Number(params.seq))) return json(res, 400, { error: 'seq must be a non-negative integer' })
+  if (!/^\d+$/.test(params.seq) || Number(params.seq) > MAX_SEQ) return json(res, 400, { error: `seq must be an integer from 0 to ${MAX_SEQ}` })
   const seq = Number(params.seq)
   const startRaw = String(req.headers['x-start-ms'] ?? '')
   if (!/^\d+$/.test(startRaw) || !Number.isSafeInteger(Number(startRaw))) return json(res, 400, { error: 'X-Start-Ms must be a non-negative integer' })
@@ -222,6 +245,8 @@ export async function handleVideoChunk(
     const current = findRun(params.id)
     if (!video || !current) return json(res, 404, { error: 'Run not found' })
     if (video.evicted_at !== null) return json(res, 410, { error: 'Video no longer kept' })
+    // An end call is not serialised with the chunks, so one may have landed while this chunk waited its turn.
+    if (videoEnded(video, current)) return json(res, 409, { error: 'Video already ended' })
     // A retry of a chunk already written, or one that arrived after a later chunk: the gap it left stays a gap.
     if (seq < video.next_seq) return json(res, 200, { ok: true, duplicate: true, nextSeq: video.next_seq })
     if (video.bytes + buf.length > MAX_VIDEO_BYTES) {
@@ -289,8 +314,8 @@ export async function handleEndVideo(
   let body: { lastSeq?: unknown; reason?: unknown } = {}
   try { body = JSON.parse(buf.toString('utf-8')) as typeof body } catch { /* answered below */ }
   const lastSeq = body.lastSeq
-  if (!(lastSeq === -1 || (typeof lastSeq === 'number' && Number.isSafeInteger(lastSeq) && lastSeq >= 0))) {
-    return json(res, 400, { error: 'lastSeq must be -1 or a non-negative integer' })
+  if (!(lastSeq === -1 || (typeof lastSeq === 'number' && Number.isInteger(lastSeq) && lastSeq >= 0 && lastSeq <= MAX_SEQ))) {
+    return json(res, 400, { error: `lastSeq must be -1 or an integer from 0 to ${MAX_SEQ}` })
   }
   if (typeof body.reason !== 'string' || !END_REASONS.has(body.reason)) return json(res, 400, { error: 'Unknown end reason' })
   const video = findVideo(run.seq, idx)
@@ -423,7 +448,13 @@ export function purgeRunVideos(videosDir: string, holders: RunHolders): void {
   for (const f of files) unlinkSafe(path.join(videosDir, f), 'run video')
 
   let onDisk: string[] = []
-  try { onDisk = fs.readdirSync(videosDir) } catch { return }
+  // No directory is what a restore that left the videos out produces: every live row is then missing its file. Any
+  // other failure says nothing about the files, and must not mark every video gone.
+  try {
+    onDisk = fs.readdirSync(videosDir)
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return
+  }
   const live = new Set((db.prepare('SELECT file FROM flow_run_videos WHERE evicted_at IS NULL').all() as { file: string }[]).map((r) => r.file))
   for (const f of onDisk) if (!live.has(f)) unlinkSafe(path.join(videosDir, f), 'orphaned run video')
   const present = new Set(onDisk)
