@@ -170,7 +170,8 @@ export function videoSettings(): { passRetentionDays: number; storageCapBytes: n
  * How far `len` more bytes would go past the cap and past the disk's floor; zero or less is room. Both count: the
  * cap is the operator's setting, the floor is what the disk can actually give. Reserved bytes count against the
  * floor too: they are not on disk yet, so free space does not show them, and two writers to different videos would
- * otherwise both see the same free space.
+ * otherwise both see the same free space. Between a write landing and its release the same bytes count twice, once
+ * in free space and once reserved: at most a chunk per writer, and on the side of keeping the floor.
  */
 export function shortfall(
   usage: { used: number; reserved: number }, len: number, capBytes: number, room: DiskRoom,

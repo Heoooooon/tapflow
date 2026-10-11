@@ -218,7 +218,9 @@ describe('flow run videos', () => {
     const pending = fetch(`http://127.0.0.1:${port}${v(id)}/chunks/0`, {
       method: 'POST', body, duplex: 'half', headers: { ...bearer(PAT_CI), 'X-Start-Ms': '0', 'X-Keyframe': '1' },
     } as RequestInit)
-    // The chunk has passed its first check and is reading its body; the end call lands now.
+    // The chunk has passed its first check and is reading its body; the end call lands now. Nothing outside the
+    // relay can see that point, so on a starved worker the end may land first and this passes through the first
+    // check instead, which answers the same 409. Mutating the second check away fails this test on a normal run.
     await new Promise((r) => setTimeout(r, 50))
     expect((await end(id, -1, 'cancelled')).status).toBe(200)
     finish()
