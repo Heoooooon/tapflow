@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, renderHook, screen } from '@testing-library/react'
+import { StrictMode } from 'react'
 import userEvent from '@testing-library/user-event'
 import type { MutableRefObject } from 'react'
 import type { BinaryFrameHandler, FrameMeta } from '@/lib/envelope'
@@ -8,13 +9,23 @@ import type { BinaryFrameHandler, FrameMeta } from '@/lib/envelope'
 // picture shown while paused is flushed — and a flushed WebCodecs decoder takes only a keyframe next, so playing
 // starts from a fresh feed rather than continuing.
 
-const fed: { meta: FrameMeta | undefined; replay: boolean }[] = []
-vi.mock('@/components/device/WatchedDevice', () => ({
-  WatchedDevice: ({ binaryFrameHandlerRef, replay }: { binaryFrameHandlerRef: MutableRefObject<BinaryFrameHandler | undefined>; replay?: boolean }) => {
-    binaryFrameHandlerRef.current = (_d, meta) => { fed.push({ meta, replay: replay === true }) }
-    return <div data-testid="device" />
-  },
-}))
+const fed: { meta: FrameMeta | undefined; replay: boolean; decoder: number }[] = []
+let decoders = 0
+vi.mock('@/components/device/WatchedDevice', async () => {
+  const { useEffect } = await import('react')
+  return {
+    // Like the real screen: a decoder per effect run, installed in an effect and torn down in its cleanup — which
+    // StrictMode runs twice, so a feed that reached only the first decoder leaves the second with nothing.
+    WatchedDevice: ({ binaryFrameHandlerRef, replay }: { binaryFrameHandlerRef: MutableRefObject<BinaryFrameHandler | undefined>; replay?: boolean }) => {
+      useEffect(() => {
+        const decoder = ++decoders
+        binaryFrameHandlerRef.current = (_d, meta) => { fed.push({ meta, replay: replay === true, decoder }) }
+        return () => { binaryFrameHandlerRef.current = undefined }
+      }, [binaryFrameHandlerRef, replay])
+      return <div data-testid="device" />
+    },
+  }
+})
 
 import { RunVideo } from '@/components/runs/RunVideo'
 import { useDecoderStream } from '@/hooks/useDecoderStream'
@@ -33,7 +44,7 @@ const frame = (key: boolean) => {
   return out
 }
 
-afterEach(() => { fed.length = 0; vi.unstubAllGlobals() })
+afterEach(() => { fed.length = 0; decoders = 0; vi.unstubAllGlobals() })
 
 describe('the replay feed', () => {
   it('flushes the last frame of a paused seek only, and feeds afresh without a flush when play starts', async () => {
@@ -47,18 +58,20 @@ describe('the replay feed', () => {
       chunks: [{ seq: 0, offset: 0, length: file.length, startMs: 0, keyframe: true }], gaps: [],
     }
     vi.stubGlobal('fetch', vi.fn(async (url: string) => (url.endsWith('/index') ? Response.json(index) : new Response(file))))
-    render(withQuery(<RunVideo runId="r" idx={0} flowName="f" summary={{ ended: true, endReason: 'done', evicted: false, notRecorded: null, bytes: 1 }} running={false} />))
+    render(<StrictMode>{withQuery(<RunVideo runId="r" idx={0} flowName="f" summary={{ ended: true, endReason: 'done', evicted: false, notRecorded: null, bytes: 1 }} running={false} />)}</StrictMode>)
     await userEvent.click(screen.getByRole('button', { name: /Play the video/ }))
     await screen.findByTestId('device')
 
-    // Opened at the flow's start (100 ms): the keyframe and the frame at 100, the second flushed.
-    expect(fed.map((f) => [f.meta?.keyframe, f.meta?.flush])).toEqual([[true, false], [false, true]])
+    // Opened at the flow's start (100 ms): the keyframe and the frame at 100, the second flushed — into the decoder
+    // that is still there once StrictMode has run the effects twice.
+    expect(fed.filter((f) => f.decoder === decoders).map((f) => [f.meta?.keyframe, f.meta?.flush])).toEqual([[true, false], [false, true]])
     expect(fed.every((f) => f.replay)).toBe(true)
 
     fed.length = 0
     await userEvent.click(screen.getByRole('button', { name: 'Play' }))
-    expect(fed[0]?.meta).toMatchObject({ keyframe: true, flush: false })
-    expect(fed.some((f) => f.meta?.flush)).toBe(false)
+    const playing = fed.filter((f) => f.decoder === decoders)
+    expect(playing[0]?.meta).toMatchObject({ keyframe: true, flush: false })
+    expect(playing.some((f) => f.meta?.flush)).toBe(false)
   })
 })
 

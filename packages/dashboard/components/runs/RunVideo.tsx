@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Pause, Play, Video } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -95,7 +95,25 @@ function formatBytes(n: number): string {
  * then paces frames by their recorded time.
  */
 function Player({ video, index, flowName, running }: { video: LoadedVideo; index: VideoIndex; flowName: string; running: boolean }) {
-  const handlerRef = useRef<BinaryFrameHandler | undefined>(undefined)
+  /** What feeds a freshly installed decoder; kept current in a layout effect, read by the ref below. */
+  const feedNewDecoder = useRef<() => void>(() => {})
+  /**
+   * **The feed follows the decoder, not the seek.** The screen installs its handler in an effect, and a new decoder
+   * comes with every install: each seek remounts the screen, and StrictMode runs a new mount's effects twice — the
+   * second install a fresh decoder the parent's effect never hears of. So the ref is a setter: whenever a handler is
+   * installed, it is fed from the current seek target, and the last decoder standing always has the picture.
+   */
+  const [handlerRef] = useState(() => {
+    let handler: BinaryFrameHandler | undefined
+    return {
+      get current() { return handler },
+      set current(next: BinaryFrameHandler | undefined) {
+        handler = next
+        // After the install returns, and only if this handler is still the one in place.
+        if (next) queueMicrotask(() => { if (handler === next) feedNewDecoder.current() })
+      },
+    }
+  })
   const start = Math.min(video.meta.flowStartMs, video.durationMs)
   const [epoch, setEpoch] = useState(0)
   const [shownMs, setShownMs] = useState(start)
@@ -103,9 +121,11 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1)
   /** Playback position and the next record to deliver; refs, because the animation loop reads them every frame. */
   const clock = useRef({ ms: start, next: 0 })
-  /** A seek waiting for the remount. `flush`: present the target now — right for a still picture, and wrong while
-   *  playing, since after a flush the decoder accepts only a keyframe and playback continues with the frames after. */
-  const pendingSeek = useRef<{ ms: number; flush: boolean } | null>({ ms: start, flush: true })
+  /** Where the current screen was asked to start. `flush`: present the target now — right for a still picture, and
+   *  wrong while playing, since after a flush the decoder accepts only a keyframe and playback continues after it.
+   *  Kept, not consumed: an effect that runs again (StrictMode does, and so does any remount of the screen's hook)
+   *  meets a new decoder, which needs the same feed. */
+  const seekTarget = useRef<{ ms: number; flush: boolean }>({ ms: start, flush: true })
   /** A pointer is on the seek bar: what lets a drag catch on a step, and the arrow keys not. */
   const dragging = useRef(false)
 
@@ -129,24 +149,23 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
       i++
     }
     clock.current.next = i
-  }, [video])
+  }, [video, handlerRef])
 
   const seek = useCallback((ms: number, flush: boolean) => {
-    pendingSeek.current = { ms: Math.max(0, Math.min(ms, video.durationMs)), flush }
-    setShownMs(pendingSeek.current.ms)
+    seekTarget.current = { ms: Math.max(0, Math.min(ms, video.durationMs)), flush }
+    setShownMs(seekTarget.current.ms)
     setEpoch((e) => e + 1)
   }, [video])
 
-  // After a (re)mount the new screen's handler is in place — child effects run first — so the decoder is fed from
-  // the keyframe before the target, up to it.
-  useEffect(() => {
-    const target = pendingSeek.current
-    if (target === null) return
-    pendingSeek.current = null
-    const from = seekChunk(video, target.ms)
-    clock.current = { ms: target.ms, next: from >= 0 ? video.chunkStarts[from]! : video.records.length }
-    deliver(target.ms, target.flush)
-  }, [epoch, video, deliver])
+  // A new decoder is fed from the keyframe before the seek target, up to it.
+  useLayoutEffect(() => {
+    feedNewDecoder.current = () => {
+      const target = seekTarget.current
+      const from = seekChunk(video, target.ms)
+      clock.current = { ms: target.ms, next: from >= 0 ? video.chunkStarts[from]! : video.records.length }
+      deliver(target.ms, target.flush)
+    }
+  }, [video, deliver])
 
   useEffect(() => {
     if (!playing) return
