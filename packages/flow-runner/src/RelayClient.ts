@@ -252,6 +252,12 @@ export class SessionJoinError extends PlatformError {
 // package's public entry and `@tapflowio/cli` imports it — renaming would be a breaking change.
 export type { DeviceSummary as DeviceInfo } from '@tapflowio/protocol'
 
+/** Reads the stream of the session this client holds. */
+export interface StreamListener {
+  frame(data: Buffer): void
+  event(type: 'chrome' | 'deviceInfo', payload: unknown): void
+}
+
 export interface AgentSession {
   agentName?: string
   platform?: string
@@ -363,6 +369,8 @@ export class RelayClient {
    *  that learned it could claim this client's sessions. */
   readonly clientId = randomUUID()
   private waiters: Waiter[] = []
+  /** Who is reading the stream this runner holds — the run's video (A4). None by default: frames are dropped. */
+  private streamListener: StreamListener | null = null
 
   constructor(
     private readonly relayUrl: string,
@@ -383,9 +391,22 @@ export class RelayClient {
       })
       ws.once('error', (e) => reject(new RelayUnavailableError(`relay connection failed: ${(e as Error).message}`)))
       ws.on('message', (data, isBinary) => {
-        if (isBinary) return
+        if (isBinary) {
+          // A listener's failure is its own: it must never take this socket's handler, and with it every reply.
+          try { this.streamListener?.frame(data as Buffer) } catch { /* the video loses a frame */ }
+          return
+        }
+        let msg: RelayMsg
         try {
-          this.dispatch(JSON.parse((data as Buffer).toString()) as RelayMsg)
+          msg = JSON.parse((data as Buffer).toString()) as RelayMsg
+        } catch { return /* ignore malformed */ }
+        if (this.streamListener && (msg['type'] === 'session:chrome' || msg['type'] === 'session:deviceInfo')) {
+          try {
+            this.streamListener.event(msg['type'] === 'session:chrome' ? 'chrome' : 'deviceInfo', msg['payload'])
+          } catch { /* as for a frame: the video's loss, not the run's */ }
+        }
+        try {
+          this.dispatch(msg)
         } catch { /* ignore malformed */ }
       })
       ws.on('close', (code: number, reason: Buffer) => {
@@ -712,9 +733,21 @@ export class RelayClient {
     ))
   }
 
-  async bootDevice(sessionId: string, deviceId: string): Promise<void> {
+  /**
+   * Hands every frame of the held session, and its chrome and device info, to `listener` — or stops, with null.
+   * The relay forwards the stream to the holder whether anyone reads it or not.
+   */
+  setStreamListener(listener: StreamListener | null): void {
+    this.streamListener = listener
+  }
+
+  /**
+   * `acceptH264` asks an iOS agent for H.264 rather than JPEG, as a dashboard that can decode it does. The video
+   * (A4) needs it: JPEG is several times the size and cannot be kept. The agent still decides, and may send JPEG.
+   */
+  async bootDevice(sessionId: string, deviceId: string, opts: { acceptH264?: boolean } = {}): Promise<void> {
     const requestId = randomUUID()
-    this.send({ type: 'device:boot', sessionId, requestId, payload: { deviceId } })
+    this.send({ type: 'device:boot', sessionId, requestId, payload: { deviceId, ...(opts.acceptH264 ? { acceptH264: true } : {}) } })
     const msg = await this.waitFor(
       (m) => (m['type'] === 'device:ready' || m['type'] === 'device:boot-error') && m['sessionId'] === sessionId && correlatesWith(m, requestId),
       BOOT_DEADLINE_MS,

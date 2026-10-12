@@ -86,12 +86,12 @@ export const INBOUND_DISPOSITION = {
       + 'the device: a flow that needs a posture would have to say so as a step, and none does.',
   },
   'session:chrome': {
-    ignored: 'Bezel geometry and device model, for drawing a device frame around a video stream. A replay '
-      + 'engine renders nothing, and selectors are resolved from the UI tree in normalized coordinates.',
+    does: 'handed to the stream listener when one is set, so the run\'s video can draw the device frame it was '
+      + 'recorded in; the engine never reads it — selectors come from the UI tree in normalized coordinates',
   },
   'session:deviceInfo': {
-    ignored: 'No consumer anywhere, which `@tapflowio/protocol` states for the whole repo: both agents send '
-      + 'it, the relay caches and replays it, and nothing reads the result.',
+    does: 'handed to the stream listener when one is set and written into the run\'s video beside the chrome; '
+      + 'nothing else here reads it',
   },
   // A replay engine drives a session; it never watches one, so the four watch replies have no waiter here.
   'watch:started': { ignored: 'Answers `watch:start`, which this client never sends.' },

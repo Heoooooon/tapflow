@@ -103,9 +103,8 @@ export const INBOUND_DISPOSITION = {
       + 'client renders nothing; `list_devices` already carries the name and platform a model needs.',
   },
   'session:deviceInfo': {
-    ignored: 'No consumer anywhere, which `@tapflowio/protocol` states for the whole repo: both agents send '
-      + 'it, the relay caches and replays it, and nothing reads the result. Kept on the wire for '
-      + 'third-party agents.',
+    ignored: 'Nothing here displays a device; `list_devices` already carries its name and platform. The only '
+      + 'reader in the repo is flow-runner, which copies it into a run\'s video (A4).',
   },
   // This client drives a session; it never watches one, so the four watch replies have no waiter here.
   'watch:started': { ignored: 'Answers `watch:start`, which this client never sends.' },

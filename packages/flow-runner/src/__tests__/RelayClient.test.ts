@@ -451,6 +451,45 @@ describe('RelayClient.bootDevice — an optional correlator, with a fallback', (
     expect(boot['requestId']).not.toBe('')
   })
 
+  it('asks for H.264 only when told to, so a run without video boots as before', async () => {
+    const ready = (m: Record<string, unknown>) => ({ type: 'device:ready', sessionId: 's1', requestId: m['requestId'], payload: { deviceId: 'dev-1' } })
+    const { client, received } = await relay(ready)
+    await client.bootDevice('s1', 'dev-1')
+    await client.bootDevice('s1', 'dev-1', { acceptH264: true })
+    const boots = received.filter((m) => m['type'] === 'device:boot').map((m) => m['payload'])
+    expect(boots).toEqual([{ deviceId: 'dev-1' }, { deviceId: 'dev-1', acceptH264: true }])
+  })
+
+  it('hands the held stream\'s frames, chrome and device info to a listener, and nothing once it is removed', async () => {
+    const { client } = await relay(() => null)
+    const frames: Buffer[] = []
+    const events: [string, unknown][] = []
+    client.setStreamListener({ frame: (d) => frames.push(d), event: (t, p) => events.push([t, p]) })
+    const socket = [...wss!.clients][0]!
+    const send = async () => {
+      socket.send(Buffer.from('TFFE-frame'), { binary: true })
+      socket.send(JSON.stringify({ type: 'session:chrome', sessionId: 's1', payload: { model: 'x' } }))
+      socket.send(JSON.stringify({ type: 'session:deviceInfo', sessionId: 's1', payload: { deviceName: 'd', osVersion: '1' } }))
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    await send()
+    expect(frames.map(String)).toEqual(['TFFE-frame'])
+    expect(events).toEqual([['chrome', { model: 'x' }], ['deviceInfo', { deviceName: 'd', osVersion: '1' }]])
+    client.setStreamListener(null)
+    await send()
+    expect(frames).toHaveLength(1)
+    expect(events).toHaveLength(2)
+  })
+
+  it('keeps answering requests when the stream listener throws', async () => {
+    const { client } = await relay((m) => ({ type: 'device:ready', sessionId: 's1', requestId: m['requestId'], payload: { deviceId: 'dev-1' } }))
+    client.setStreamListener({ frame: () => { throw new Error('tap broke') }, event: () => { throw new Error('tap broke') } })
+    const socket = [...wss!.clients][0]!
+    socket.send(Buffer.from('TFFE-frame'), { binary: true })
+    socket.send(JSON.stringify({ type: 'session:chrome', sessionId: 's1', payload: {} }))
+    await expect(client.bootDevice('s1', 'dev-1')).resolves.toBeUndefined()
+  })
+
   it('is not satisfied by a ready carrying another boot\'s correlator', async () => {
     const { client } = await relay(() => ({
       type: 'device:ready', sessionId: 's1', requestId: 'someone-elses', payload: { deviceId: 'dev-1' },

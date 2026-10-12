@@ -18,5 +18,7 @@ export {
   SessionLeftError,
   SessionUnavailableError,
 } from './RelayClient.js'
-export type { AgentSession, DeviceInfo } from './RelayClient.js'
+export type { AgentSession, DeviceInfo, StreamListener } from './RelayClient.js'
+export { VideoTap, VIDEO_FORMAT_VERSION, MAX_FLOW_VIDEO_BYTES, carriesParameterSets } from './video.js'
+export type { VideoChunk, VideoEndReason, VideoMeta, VideoSink } from './video.js'
 export { RelayDriver } from './RelayDriver.js'

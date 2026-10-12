@@ -131,3 +131,24 @@ describe('ciContext', () => {
       .toEqual({ provider: 'github', commit: 'f' })
   })
 })
+
+describe('RunRecorder.created (what the video lane waits on)', () => {
+  it('resolves to the id once the relay created the run', async () => {
+    const { r } = recorder(ok)
+    r.create(planned)
+    expect(await r.created).toBe('run-1')
+  })
+
+  it('resolves to null when the relay refused the run', async () => {
+    const { r } = recorder(() => Promise.resolve(new Response('<!doctype html>', { status: 200 })))
+    r.create(planned)
+    expect(await r.created).toBeNull()
+  })
+
+  it('resolves to null when the drain gives up before the relay answered', async () => {
+    const { r } = recorder(() => new Promise(() => {}), 60_000)
+    r.create(planned)
+    await r.drain(20)
+    expect(await r.created).toBeNull()
+  })
+})

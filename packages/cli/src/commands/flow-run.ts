@@ -6,12 +6,14 @@ import {
   toJUnitXml,
   RelayClient,
   RelayDriver,
+  VideoTap,
   type Flow,
   type FlowResult,
   type DeviceInfo,
 } from '@tapflowio/flow-runner'
 import { ciContext, runningInCI } from '../lib/ci.js'
 import { RunRecorder, type FlowReport } from '../lib/runRecorder.js'
+import { VideoLane } from '../lib/videoLane.js'
 
 export interface FlowRunOptions {
   relay?: string
@@ -40,6 +42,10 @@ const RECORD_DRAIN_ON_SIGNAL_MS = 5_000
 const MAX_TIMEOUT_SECONDS = 2_147_483_647 / 1000
 
 class FlowRunEnvironmentError extends Error {}
+
+function httpBaseOf(relayUrl: string): string {
+  return relayUrl.replace(/^wss?/, (p) => (p === 'wss' ? 'https' : 'http'))
+}
 
 function envFail(message: string): never {
   throw new FlowRunEnvironmentError(message)
@@ -97,6 +103,8 @@ function flowReport(result: FlowResult, device: DeviceInfo): FlowReport {
 export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise<void> {
   let client: RelayClient | undefined
   let recorder: RunRecorder | undefined
+  /** Each flow's video (A4): cut from the stream this runner holds, sent beside the record. Only while recording. */
+  let video: { tap: VideoTap; lane: VideoLane } | undefined
   let exitCode = 0
   let joinedSessionId: string | undefined
   let sawProductFailure = false
@@ -118,13 +126,23 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
       if (client && joinedSessionId !== undefined) client.leaveSession(joinedSessionId)
     } catch { /* leaving is best effort on the way out */ }
     recorder?.finish({ status: 'aborted', exitCode: code, errorMessage: `cancelled (${signal})` })
-    void (recorder?.drain(RECORD_DRAIN_ON_SIGNAL_MS) ?? Promise.resolve(null)).finally(() => {
+    // The flow's video so far, ended as cut short. It drains after `finish`, inside the same budget.
+    video?.tap.end('cancelled')
+    void drainAll(RECORD_DRAIN_ON_SIGNAL_MS).finally(() => {
       client?.disconnect()
       process.exit(code)
     })
   }
   process.on('SIGINT', onSignal)
   process.on('SIGTERM', onSignal)
+
+  /** The record first — `finish` is the runner's own account of the run — then video in what is left of `capMs`. */
+  const drainAll = async (capMs: number) => {
+    const started = Date.now()
+    const record = await recorder?.drain(capMs)
+    await video?.lane.drain(capMs - (Date.now() - started))
+    return record
+  }
 
   try {
     if (files.length === 0) envFail('no flow files given — usage: tapflow flow run .tapflow/flows/*.yaml')
@@ -169,7 +187,7 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
       // REST has no loopback exemption, so without a token there is nothing to record with.
       console.error('run not recorded: no token (pass --token or set TAPFLOW_TOKEN to record runs on the relay)')
     } else {
-      recorder = new RunRecorder(relayUrl.replace(/^wss?/, (p) => (p === 'wss' ? 'https' : 'http')), token, {
+      recorder = new RunRecorder(httpBaseOf(relayUrl), token, {
         fetch: globalThis.fetch,
         warn: (line) => console.error(line),
       })
@@ -179,6 +197,11 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
         flows: flows.map((f, i) => ({ name: f.name, file: files[i] })),
         ci: ciContext(),
       })
+      video = {
+        tap: new VideoTap(),
+        lane: new VideoLane(httpBaseOf(relayUrl), token, recorder.created, { fetch: globalThis.fetch, warn: (line) => console.error(line) }),
+      }
+      client.setStreamListener(video.tap)
     }
 
     const { sessionId, device } = await resolveSession(client, opts)
@@ -194,7 +217,8 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
     // what initializes the agent's touch/stream state for this session (the
     // dashboard does the same on join).
     console.log(`preparing ${device.name}...`)
-    await client.bootDevice(sessionId, device.id)
+    // H.264 when there is a video to keep: JPEG is several times the size and is not kept.
+    await client.bootDevice(sessionId, device.id, { acceptH264: video !== undefined })
     if (opts.build !== undefined && opts.install !== false) {
       console.log(`installing build ${opts.build}...`)
       await client.installApp(sessionId, opts.build)
@@ -206,15 +230,23 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
       // A passed flow's last screen is evidence for the record; with nothing recording, it would be a screenshot per
       // flow taken for nobody.
       ...(recorder ? { captureLastScreen: true } : {}),
+      ...(video ? { onStep: (mark: Parameters<VideoTap['step']>[0]) => video?.tap.step(mark) } : {}),
     }
     const results: FlowResult[] = []
 
     for (const [flowIndex, flow] of flows.entries()) {
       process.stdout.write(`▶ ${flow.name} `)
+      const sink = video?.lane.video(flowIndex)
+      if (sink) video?.tap.begin(sink, device.platform)
       const result = await runFlow(flow, driver, engineOpts)
       // Cancelled meanwhile: the signal path left the session, which fails the step in flight. That failure is
       // the cancel, not the product, so it is neither printed nor recorded.
       if (cancelling) return
+      if (sink) {
+        // Before the end: the end is what tells the lane the failure's moment is in its last chunk.
+        sink.failed = result.status === 'failed'
+        video?.tap.end()
+      }
       results.push(result)
       // The screen the flow ended on, failed or passed.
       recorder?.reportFlow(flowIndex, flowReport(result, device), result.failureScreenshot ?? result.lastScreenshot)
@@ -275,7 +307,8 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
         ...(exitCode === EXIT_ENV_ERROR ? { failureKind: 'environment' } : exitCode === EXIT_FLOW_FAILED ? { failureKind: 'product' } : {}),
         ...(errorMessage ? { errorMessage } : {}),
       })
-      const { runId, complete } = await recorder.drain(RECORD_DRAIN_MS)
+      video?.tap.end()
+      const { runId, complete } = (await drainAll(RECORD_DRAIN_MS))!
       // Incomplete has already been warned about; the id is still worth having to find what did arrive. The page's
       // link only outside CI, for the watch link's reason: it is the relay's address, and a log may be public.
       if (runId) {
@@ -283,6 +316,7 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
         console.log(`recorded as run ${runId}${complete ? '' : ' (incomplete)'}${page}`)
       }
     }
+    client?.setStreamListener(null)
     if (!cancelling) client?.disconnect()
     process.off('SIGINT', onSignal)
     process.off('SIGTERM', onSignal)

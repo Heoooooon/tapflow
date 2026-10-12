@@ -534,3 +534,20 @@ describe('rejected failure screenshot preserves classification', () => {
     expect(result.failureScreenshot).toBeUndefined()
   })
 })
+
+describe('runFlow onStep (the run video\'s timeline)', () => {
+  it('marks each step\'s start and end, the failure, and nothing for skipped steps', async () => {
+    const marks: unknown[] = []
+    const driver = fakeDriver([[]])
+    driver.openUrl = vi.fn(async () => { throw new Error('no such app') })
+    await runFlow(parseFlow('steps:\n  - pressKey: Enter\n  - openUrl: "app://x"\n  - pressKey: Enter\n', 't.yaml'), driver, {
+      pollIntervalMs: 1, defaultTimeoutMs: 20, onStep: (m) => marks.push(m),
+    })
+    expect(marks).toEqual([
+      { index: 0, name: expect.any(String), phase: 'start' },
+      { index: 0, name: expect.any(String), phase: 'end', status: 'passed' },
+      { index: 1, name: expect.any(String), phase: 'start' },
+      { index: 1, name: expect.any(String), phase: 'end', status: 'failed' },
+    ])
+  })
+})
