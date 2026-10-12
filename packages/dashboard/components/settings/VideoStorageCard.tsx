@@ -78,7 +78,7 @@ export function VideoStorageCard({ settings }: { settings: WorkspaceSettings }) 
       <CardContent>
         <form onSubmit={form.handleSubmit(onSave)} className="flex flex-col gap-6">
           <div className="grid gap-2">
-            <Progress value={usedPct} className="h-2" aria-label="Storage used by videos" aria-valuetext={`${formatGb(usage)} of ${formatGb(effective)}`} />
+            <Progress value={usedPct} aria-label="Storage used by videos" aria-valuetext={`${formatGb(usage)} of ${formatGb(effective)}`} />
             <p className="text-sm text-muted-foreground">
               <span className="font-medium text-foreground">{formatGb(usage)}</span> of {formatGb(effective)} used
               {effective < capBytes && ' — the disk has less room than the limit below, so that is the limit in effect'}

@@ -232,7 +232,7 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
             nudge (index.css): a mark that moves when clicked reads as having moved in time. Centred by margin, not a
             transform, so nothing on press can displace it. */}
         <TooltipProvider delayDuration={150}>
-          <div className="relative mx-2.5 h-2">
+          <div className="relative mx-2 h-2">
             {video.gaps.map((g, i) => (
               <Tooltip key={`g${i}`}>
                 <TooltipTrigger asChild>
