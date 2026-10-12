@@ -32,6 +32,8 @@ export function RunVideo({ runId, idx, flowName, summary, running }: {
   running: boolean
 }) {
   const [requested, setRequested] = useState(false)
+  /** The button had focus when pressed, so focus follows it into the player that replaces it. */
+  const [focusPlayer, setFocusPlayer] = useState(false)
   const videoQuery = useQuery({
     queryKey: queryKeys.runVideo(runId, idx),
     // Parsed once, here: the file is megabytes, and parsing it in render would redo that on every re-render.
@@ -49,7 +51,17 @@ export function RunVideo({ runId, idx, flowName, summary, running }: {
 
   const loaded = videoQuery.data
   if (loaded?.kind === 'ready') {
-    return <Player video={loaded.video} index={loaded.index} flowName={flowName} running={running} />
+    // Keyed by length: loading what has arrived since gives a new video, and the player starts over with it.
+    return (
+      <Player
+        key={loaded.index.bytes}
+        video={loaded.video}
+        index={loaded.index}
+        flowName={flowName}
+        focusPlay={focusPlayer}
+        onLoadRest={() => void videoQuery.refetch()}
+      />
+    )
   }
   const loading = requested && videoQuery.isFetching
   const answer = loaded?.kind === 'gone' ? 'Video no longer kept.'
@@ -64,8 +76,9 @@ export function RunVideo({ runId, idx, flowName, summary, running }: {
         variant="outline"
         aria-disabled={loading}
         className="aria-disabled:opacity-50"
-        onClick={() => {
+        onClick={(e) => {
           if (loading) return
+          setFocusPlayer(document.activeElement === e.currentTarget)
           if (videoQuery.isError) void videoQuery.refetch()
           else setRequested(true)
         }}
@@ -94,7 +107,16 @@ function formatBytes(n: number): string {
  * from the last decodable keyframe at or before the target — at once, so the picture is right when it settles —
  * then paces frames by their recorded time.
  */
-function Player({ video, index, flowName, running }: { video: LoadedVideo; index: VideoIndex; flowName: string; running: boolean }) {
+function Player({ video, index, flowName, focusPlay, onLoadRest }: {
+  video: LoadedVideo
+  index: VideoIndex
+  flowName: string
+  /** Move focus to Play on mount: the button that loaded the video, which had focus, is gone. */
+  focusPlay: boolean
+  onLoadRest: () => void
+}) {
+  const playButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => { if (focusPlay) playButton.current?.focus() }, [focusPlay])
   /** What feeds a freshly installed decoder; kept current in a layout effect, read by the ref below. */
   const feedNewDecoder = useRef<() => void>(() => {})
   /**
@@ -200,7 +222,8 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
   }, [playing, speed, video, deliver, seek, epoch])
 
   const toggle = () => {
-    if (playing) { setPlaying(false); return }
+    // Paused on the frame shown: a decoder may hold its last output until more input arrives, and none will.
+    if (playing) { setPlaying(false); seek(clock.current.ms, true); return }
     // A paused picture was flushed, and a flushed decoder takes only a keyframe next: play starts from a fresh feed.
     seek(clock.current.ms >= video.durationMs ? start : clock.current.ms, false)
     setPlaying(true)
@@ -219,7 +242,7 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
     <div className="flex flex-col gap-4">
       <div role="region" aria-label={`Video of ${flowName}`} className="w-fit origin-top-left" style={{ zoom: 0.6 }}>
         <WatchedDevice
-          key={epoch}
+          screenKey={epoch}
           chrome={chrome}
           deviceReady
           platform={video.meta.platform ?? 'ios'}
@@ -282,7 +305,7 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
         </div>
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}>
+            <Button ref={playButton} size="sm" variant="outline" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}>
               {playing ? <Pause className="h-3.5 w-3.5" aria-hidden /> : <Play className="h-3.5 w-3.5" aria-hidden />}
             </Button>
             <TechLabel className="text-muted-foreground">{formatClock(shownMs)} / {formatClock(video.durationMs)}</TechLabel>
@@ -293,9 +316,16 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
               </SelectContent>
             </Select>
           </div>
-          {(endNote || (running && !index.ended)) && (
+          {(endNote || !index.ended) && (
             <p className="text-xs text-muted-foreground">
-              {[endNote, running && !index.ended ? 'Still recording: reload the video for the rest.' : null].filter(Boolean).join(' ')}
+              {endNote}
+              {/* Offered whenever the copy here was taken before the end, including after the flow has finished. */}
+              {!index.ended && (
+                <>
+                  {endNote && ' '}Loaded while the flow was still running.{' '}
+                  <button type="button" onClick={onLoadRest} className="underline underline-offset-2 hover:text-foreground">Load the rest</button>
+                </>
+              )}
             </p>
           )}
         </div>

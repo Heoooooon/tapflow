@@ -47,6 +47,18 @@ describe('VideoStorageCard', () => {
     expect(body.get('video_storage_cap_mb')).toBe(String(19 * 1024))
   })
 
+  it('sends only what was moved, so a cap set in MB is not rounded by saving the days', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ ok: true }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(withQuery(<VideoStorageCard settings={{ ...settings, video_storage_cap_mb: 1500 }} />))
+    fireEvent.keyDown(screen.getByRole('slider', { name: "Keep passed flows' videos for" }), { key: 'ArrowRight' })
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    const body = fetchMock.mock.calls[0]![1]!.body as FormData
+    expect(body.get('video_pass_retention_days')).toBe('4')
+    expect(body.has('video_storage_cap_mb')).toBe(false)
+  })
+
   it('widens a slider to reach a value set beyond its usual range, rather than clamping it', () => {
     render(withQuery(<VideoStorageCard settings={{ ...settings, video_pass_retention_days: 90, video_storage_cap_mb: 500 * 1024 }} />))
     expect(screen.getByRole('slider', { name: "Keep passed flows' videos for" }).getAttribute('aria-valuemax')).toBe('90')

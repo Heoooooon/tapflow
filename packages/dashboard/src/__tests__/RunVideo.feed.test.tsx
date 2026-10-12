@@ -16,12 +16,13 @@ vi.mock('@/components/device/WatchedDevice', async () => {
   return {
     // Like the real screen: a decoder per effect run, installed in an effect and torn down in its cleanup — which
     // StrictMode runs twice, so a feed that reached only the first decoder leaves the second with nothing.
-    WatchedDevice: ({ binaryFrameHandlerRef, replay }: { binaryFrameHandlerRef: MutableRefObject<BinaryFrameHandler | undefined>; replay?: boolean }) => {
+    // `screenKey` remounts the real screen, so here it starts a new decoder too.
+    WatchedDevice: ({ binaryFrameHandlerRef, replay, screenKey }: { binaryFrameHandlerRef: MutableRefObject<BinaryFrameHandler | undefined>; replay?: boolean; screenKey?: number }) => {
       useEffect(() => {
         const decoder = ++decoders
         binaryFrameHandlerRef.current = (_d, meta) => { fed.push({ meta, replay: replay === true, decoder }) }
         return () => { binaryFrameHandlerRef.current = undefined }
-      }, [binaryFrameHandlerRef, replay])
+      }, [binaryFrameHandlerRef, replay, screenKey])
       return <div data-testid="device" />
     },
   }
@@ -72,6 +73,12 @@ describe('the replay feed', () => {
     const playing = fed.filter((f) => f.decoder === decoders)
     expect(playing[0]?.meta).toMatchObject({ keyframe: true, flush: false })
     expect(playing.some((f) => f.meta?.flush)).toBe(false)
+
+    // Paused: the frame shown is flushed, from a fresh feed, since a decoder may hold its last output.
+    await userEvent.click(screen.getByRole('button', { name: 'Pause' }))
+    const paused = fed.filter((f) => f.decoder === decoders)
+    expect(paused[0]?.meta?.keyframe).toBe(true)
+    expect(paused.at(-1)?.meta?.flush).toBe(true)
   })
 })
 

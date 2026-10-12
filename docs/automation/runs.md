@@ -57,7 +57,7 @@ While a run is in progress, the list and the run's page refresh every few second
 
 - Give `tapflow flow run` an API-type token (`view, builds:write`) and every run is recorded. Pass it with `--token` or `TAPFLOW_TOKEN`, or keep it in the [token file](/automation/mcp-server#token-file). The details are in the [Flow reference's run records](/automation/flows#run-records).
 - Add `--no-record` to skip recording.
-- Video retention is set in the **Flow run videos** card of **Settings → Default** (Admin): how many days passed flows' videos are kept and how much storage videos may use, with what is in use now. The defaults are 3 days and 20 GB. A failed flow's video is kept as long as its run, and when storage is full the oldest passed videos go first.
+- Video retention is set in the **Flow run videos** card of **Settings → Default** (Admin): how many days passed flows' videos are kept and how much storage videos may use, with what is in use now. The defaults are 3 days and 20 GB. A failed flow's video is kept as long as its run unless storage runs out: when storage is full the oldest passed videos go first, and failed ones only after every passed one has gone.
 - When you run it locally, the runner prints a link to the run's page when it ends. In CI it prints the run's id only, so the relay's address stays out of the log.
 - A run's record is deleted with its build; a record of a run with no build is deleted after 7 days.
 

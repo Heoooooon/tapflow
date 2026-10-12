@@ -1,6 +1,6 @@
 ---
 title: Team, roles & tokens
-description: "The dashboard's Settings pages: workspace and apps, the member list with roles, invitations and password resets (Admin), and personal access tokens for CI and remote agents (Admin, Developer, QA)."
+description: "The dashboard's Settings pages: workspace, apps and flow run video storage, the member list with roles, invitations and password resets (Admin), and personal access tokens for CI and remote agents (Admin, Developer, QA)."
 ---
 
 # Team, roles & tokens
@@ -9,9 +9,10 @@ The dashboard's **Settings** has three sub-pages accessible from the left nav.
 
 ## Default
 
-The page every member opens first. Its profile settings (nickname, avatar, password) are the same for everyone and are described in [For teammates](/get-started/teammates#profile). Two more sections appear by role:
+The page every member opens first. Its profile settings (nickname, avatar, password) are the same for everyone and are described in [For teammates](/get-started/teammates#profile). Three more sections appear by role:
 
 - **Workspace** — the team name and logo. Visible to Admins only.
+- **Flow run videos** — how long passed flows' videos are kept and how much storage videos may use, with what is in use now. Visible to Admins only. See [Flow Runs](/automation/runs#recording).
 - **Apps** — rename or delete apps. Visible to Admins, Developers and QA, hidden from Viewers.
 
 ## Team

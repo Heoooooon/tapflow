@@ -56,7 +56,7 @@
 
 ### Run the team
 
-- [Team, Roles & Tokens](https://www.tapflow.dev/operate/team-and-roles): The dashboard's Settings pages: workspace and apps, the member list with roles, invitations and password resets (Admin), and personal access tokens for CI and remote agents (Admin, Developer, QA).
+- [Team, Roles & Tokens](https://www.tapflow.dev/operate/team-and-roles): The dashboard's Settings pages: workspace, apps and flow run video storage, the member list with roles, invitations and password resets (Admin), and personal access tokens for CI and remote agents (Admin, Developer, QA).
 - [Scaling Mac Resources](https://www.tapflow.dev/operate/scaling): Add more Mac hosts to the same relay for a larger device pool. Agent naming, per-Mac device limits, and monitoring via Mac Resources tab.
 
 ### Deliver builds

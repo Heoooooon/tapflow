@@ -78,6 +78,25 @@ describe('runVideo', () => {
     expect(snapToStep({ ...v, durationMs: 60_000 }, 1600)).toBe(500)
   })
 
+  it('never decodes across a missing chunk: a seek past a gap resumes at the next decodable chunk', () => {
+    const chunks = [
+      { seq: 0, offset: 0, length: 1, startMs: 0, keyframe: true },
+      { seq: 1, offset: 1, length: 1, startMs: 2000, keyframe: false },
+      { seq: 3, offset: 2, length: 1, startMs: 6000, keyframe: false },
+      { seq: 4, offset: 3, length: 1, startMs: 8000, keyframe: true },
+    ]
+    expect(seekChunk({ chunks }, 3000)).toBe(0)
+    // Chunk 3 follows a gap and starts mid-GOP: the keyframe before the gap would decode frames whose references never arrived.
+    expect(seekChunk({ chunks }, 7000)).toBe(3)
+    expect(seekChunk({ chunks: chunks.slice(0, 3) }, 7000)).toBe(-1)
+  })
+
+  it('marks a lost first chunk as a gap from the start', () => {
+    const { index, file } = fixture()
+    const shifted = { ...index, chunks: index.chunks.map((c) => ({ ...c, seq: c.seq + 1 })), gaps: [0, 2] }
+    expect(loadVideo(shifted, file).gaps[0]).toEqual({ fromMs: 0, toMs: 0 })
+  })
+
   it('takes the chrome in force at a time', () => {
     const v = loadVideo(fixture().index, fixture().file)
     expect(chromeAt(v, 3000)).toEqual({ model: 'a' })
@@ -125,6 +144,27 @@ describe('RunVideo', () => {
     fireEvent.keyDown(slider, { key: 'ArrowRight' })
     expect(slider.getAttribute('aria-valuenow')).toBe('4150')
     expect(screen.queryByRole('list', { name: /Steps in the video/ })).toBeNull()
+  })
+
+  it('moves focus to Play when the button that loaded the video had it', async () => {
+    const { index, file } = fixture()
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => (url.endsWith('/video/index') ? Response.json(index) : new Response(file))))
+    render(withQuery(<RunVideo runId="r1" idx={0} flowName="login" summary={summary} running={false} />))
+    screen.getByRole('button', { name: /Play the video/ }).focus()
+    await userEvent.keyboard('{Enter}')
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Play' })))
+  })
+
+  it('offers the rest of a video loaded while the flow was still running', async () => {
+    const { index, file } = fixture()
+    let ended = false
+    const fetchMock = vi.fn(async (url: string) => (url.endsWith('/video/index') ? Response.json({ ...index, ended }) : new Response(file)))
+    vi.stubGlobal('fetch', fetchMock)
+    render(withQuery(<RunVideo runId="r1" idx={0} flowName="login" summary={{ ...summary, ended: false }} running />))
+    await userEvent.click(screen.getByRole('button', { name: /Play the video/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Load the rest' }))
+    ended = true
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([u]) => u.endsWith('/video/index'))).toHaveLength(2))
   })
 
   it('says a video the relay no longer keeps is gone, without a player', async () => {

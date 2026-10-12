@@ -52,9 +52,13 @@ export function VideoStorageCard({ settings }: { settings: WorkspaceSettings }) 
   })
 
   async function onSave(data: FormData) {
+    // Only what was moved: the cap is shown in whole GB, and sending it back unmoved would round a value set in MB
+    // through the API (1500 MB → 1024 MB) on a save that only changed the days.
+    const dirty = form.formState.dirtyFields
+    if (!dirty.retentionDays && !dirty.capGb) return
     const body = new FormData()
-    body.append('video_pass_retention_days', String(data.retentionDays))
-    body.append('video_storage_cap_mb', String(data.capGb * 1024))
+    if (dirty.retentionDays) body.append('video_pass_retention_days', String(data.retentionDays))
+    if (dirty.capGb) body.append('video_storage_cap_mb', String(data.capGb * 1024))
     try {
       const res = await fetch('/api/v1/settings', { method: 'PATCH', credentials: 'include', body })
       if (!res.ok) { toast.error('Failed to update video storage'); return }
@@ -102,7 +106,7 @@ export function VideoStorageCard({ settings }: { settings: WorkspaceSettings }) 
                   aria-labelledby="video-retention-label"
                   aria-describedby="video-retention-hint"
                 />
-                <FieldHint id="video-retention-hint">A failed flow&apos;s video is kept as long as its run.</FieldHint>
+                <FieldHint id="video-retention-hint">A failed flow&apos;s video is kept as long as its run, unless storage runs out.</FieldHint>
               </div>
             )}
           />

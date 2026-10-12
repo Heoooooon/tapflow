@@ -119,6 +119,8 @@ export function loadVideo(index: VideoIndex, file: ArrayBuffer): LoadedVideo {
       gaps.push({ fromMs: lastInChunk?.ms ?? c.startMs, toMs: next.startMs })
     }
   })
+  // A lost first chunk: the video starts late, and says so from 0.
+  if (chunks.length > 0 && [...missing].some((s) => s < chunks[0]!.seq)) gaps.unshift({ fromMs: 0, toMs: chunks[0]!.startMs })
   const lastSeq = chunks.length > 0 ? chunks[chunks.length - 1]!.seq : -1
   const tailLost = [...missing].some((s) => s > lastSeq)
   if (tailLost) gaps.push({ fromMs: durationMs, toMs: durationMs })
@@ -135,14 +137,20 @@ export function loadVideo(index: VideoIndex, file: ArrayBuffer): LoadedVideo {
   }
 }
 
-/** The chunk to start decoding from to show time `t`: the last decodable one at or before it, else the first. */
-export function seekChunk(video: LoadedVideo, t: number): number {
-  let found = -1
-  video.chunks.forEach((c, i) => {
-    if (c.keyframe && c.startMs <= t) found = i
-  })
-  if (found >= 0) return found
-  return video.chunks.findIndex((c) => c.keyframe)
+/**
+ * The chunk to start decoding from to show time `t`: the last decodable one at or before it **with no missing chunk
+ * between them** — a decoder fed across a gap gets frames whose references never arrived. With none, the first
+ * decodable chunk after `t` (the picture resumes there), or -1 when the video has no decodable chunk left.
+ */
+export function seekChunk(video: Pick<LoadedVideo, 'chunks'>, t: number): number {
+  const chunks = video.chunks
+  let at = -1
+  chunks.forEach((c, i) => { if (c.startMs <= t) at = i })
+  for (let i = at; i >= 0; i--) {
+    if (chunks[i]!.keyframe) return i
+    if (i > 0 && chunks[i]!.seq !== chunks[i - 1]!.seq + 1) break
+  }
+  return chunks.findIndex((c, i) => i > at && c.keyframe)
 }
 
 /** The device's chrome as of time `t`: the last chrome event at or before it, or the first one the video has. */
@@ -181,7 +189,7 @@ export function videoUnavailableText(v: VideoSummary): string | null {
   if (v.notRecorded === 'jpeg') return 'No video: this device streamed JPEG, which is not kept. The agent sends H.264 unless TAPFLOW_IOS_CODEC=jpeg is set.'
   if (v.notRecorded === 'no-keyframe') return 'No video: the device\'s stream gave no frame a video could start from.'
   if (v.notRecorded) return 'No video for this flow.'
-  if (v.evicted) return 'Video no longer kept: passed flows\' videos are kept for a few days, and the oldest go first when storage is full.'
+  if (v.evicted) return 'Video no longer kept: removed by the retention policy, or to make room when video storage was full.'
   return null
 }
 

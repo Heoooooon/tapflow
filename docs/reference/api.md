@@ -919,7 +919,7 @@ The flow's screenshot as `image/png` or `image/jpeg`, or `404` when there is non
 
 ## Flow run videos {#run-videos}
 
-Each flow's video, uploaded by the runner as the flow runs. The runner opens a video (`open`), sends numbered chunks (`chunks`) and ends it (`end`); the dashboard reads the chunk list (`index`) and fetches the file by byte range. Writes follow the same rules as the run endpoints above, and the last flow's tail is still taken for 120 seconds after the runner's `finish`. Passed flows' videos are removed after the retention window, and when storage is full the oldest passed ones go first; both are [team settings](#settings).
+Each flow's video, uploaded by the runner as the flow runs. The runner opens a video (`open`), sends numbered chunks (`chunks`) and ends it (`end`); the dashboard reads the chunk list (`index`) and fetches the file, which also answers byte ranges. Writes follow the same rules as the run endpoints above, and the last flow's tail is still taken for 120 seconds after the runner's `finish`. Passed flows' videos are removed after the retention window, and when storage is full the oldest passed ones go first; both are [team settings](#settings).
 
 ### `POST /api/v1/runs/:id/flows/:idx/video/open`
 
