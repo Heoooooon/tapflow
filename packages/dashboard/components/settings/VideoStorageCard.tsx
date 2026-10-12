@@ -59,9 +59,16 @@ export function VideoStorageCard({ settings }: { settings: WorkspaceSettings }) 
     const body = new FormData()
     if (dirty.retentionDays) body.append('video_pass_retention_days', String(data.retentionDays))
     if (dirty.capGb) body.append('video_storage_cap_mb', String(data.capGb * 1024))
+    const sentDays = dirty.retentionDays === true
+    const sentCap = dirty.capGb === true
     try {
       const res = await fetch('/api/v1/settings', { method: 'PATCH', credentials: 'include', body })
       if (!res.ok) { toast.error('Failed to update video storage'); return }
+      // Saved, so no longer changed: `keepDirtyValues` keeps a field dirty through the refetch, and a later save of the
+      // other field would send this one again — over a value another Admin may have set since. A field moved again
+      // while the request was out stays dirty.
+      if (sentDays && form.getValues('retentionDays') === data.retentionDays) form.resetField('retentionDays', { defaultValue: data.retentionDays })
+      if (sentCap && form.getValues('capGb') === data.capGb) form.resetField('capGb', { defaultValue: data.capGb })
       toast.success('Video storage updated')
       void queryClient.invalidateQueries({ queryKey: queryKeys.settings })
     } catch {
@@ -117,7 +124,9 @@ export function VideoStorageCard({ settings }: { settings: WorkspaceSettings }) 
               <div className="grid gap-3">
                 <div className="flex items-baseline justify-between">
                   <Label id="video-cap-label">Storage for videos</Label>
-                  <span className="text-sm tabular-nums">{field.value} GB</span>
+                  {/* The saved value as it is until the slider moves: a cap set in MB (100 MB) read as the slider's
+                      whole GB would show ten times the policy. */}
+                  <span className="text-sm tabular-nums">{form.formState.dirtyFields.capGb ? `${field.value} GB` : formatGb(capBytes)}</span>
                 </div>
                 <Slider
                   min={MIN_CAP_GB}

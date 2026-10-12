@@ -59,6 +59,28 @@ describe('VideoStorageCard', () => {
     expect(body.has('video_storage_cap_mb')).toBe(false)
   })
 
+  it('shows a cap set in MB as it is until the slider moves', () => {
+    render(withQuery(<VideoStorageCard settings={{ ...settings, video_storage_cap_mb: 100 }} />))
+    expect(screen.getByText('100 MB')).toBeTruthy()
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Storage for videos' }), { key: 'ArrowRight' })
+    expect(screen.getByText('2 GB')).toBeTruthy()
+  })
+
+  it('does not send a saved field again when the other one is saved later', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ ok: true }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(withQuery(<VideoStorageCard settings={settings} />))
+    fireEvent.keyDown(screen.getByRole('slider', { name: "Keep passed flows' videos for" }), { key: 'ArrowRight' })
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Storage for videos' }), { key: 'ArrowLeft' })
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const second = fetchMock.mock.calls[1]![1]!.body as FormData
+    expect(second.has('video_pass_retention_days')).toBe(false)
+    expect(second.get('video_storage_cap_mb')).toBe(String(19 * 1024))
+  })
+
   it('widens a slider to reach a value set beyond its usual range, rather than clamping it', () => {
     render(withQuery(<VideoStorageCard settings={{ ...settings, video_pass_retention_days: 90, video_storage_cap_mb: 500 * 1024 }} />))
     expect(screen.getByRole('slider', { name: "Keep passed flows' videos for" }).getAttribute('aria-valuemax')).toBe('90')
