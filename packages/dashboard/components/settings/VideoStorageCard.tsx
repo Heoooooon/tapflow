@@ -16,9 +16,11 @@ import type { WorkspaceSettings } from '@/lib/types'
 const GB = 1024 * 1024 * 1024
 /** The sliders' range. The relay accepts 0–365 days and 100 MB–10 TB; a value set outside these (by the API) widens
  *  the slider to reach it rather than being clamped on the next save. */
-const MAX_DAYS = 30
+// A passed flow's video is evidence it passed, rarely opened after a sprint; a busy team (50 runs × 4 flows a day)
+// uses ~3 GB a day, so two weeks fits under the top of the cap's range. The defaults (3 days, 20 GB) sit near a fifth.
+const MAX_DAYS = 14
 const MIN_CAP_GB = 1
-const MAX_CAP_GB = 200
+const MAX_CAP_GB = 100
 
 const schema = z.object({
   retentionDays: z.number().int().min(0).max(365),
