@@ -1,55 +1,58 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { VideoStorageCard } from '@/components/settings/VideoStorageCard'
 import type { WorkspaceSettings } from '@/lib/types'
 import { withQuery } from './withQuery'
 
+// Radix's slider measures its thumb with ResizeObserver, which jsdom does not have.
+globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver
+
 const GB = 1024 * 1024 * 1024
 const settings: WorkspaceSettings = {
   team_name: 'Team', logo_url: null,
-  video_pass_retention_days: 3, video_storage_cap_mb: 20480, video_usage_bytes: 3.2 * GB, video_effective_cap_bytes: 20 * GB,
+  video_pass_retention_days: 3, video_storage_cap_mb: 20480, video_usage_bytes: 5 * GB, video_effective_cap_bytes: 20 * GB,
 }
 
 describe('VideoStorageCard', () => {
   afterEach(() => { vi.unstubAllGlobals() })
 
-  it('shows what videos use against the limit in effect, and says when the disk is the limit', () => {
+  it('measures what videos use against the limit in effect, and says when the disk is the limit', () => {
     const { rerender } = render(withQuery(<VideoStorageCard settings={settings} />))
-    expect(screen.getByText(/Using/).textContent).toBe('Using 3.2 GB of 20 GB.')
+    const bar = screen.getByRole('progressbar', { name: 'Storage used by videos' })
+    expect(bar.getAttribute('aria-valuenow')).toBe('25')
+    expect(bar.getAttribute('aria-valuetext')).toBe('5.0 GB of 20 GB')
+    expect(screen.getByText(/used/).textContent).toBe('5.0 GB of 20 GB used')
     rerender(withQuery(<VideoStorageCard settings={{ ...settings, video_effective_cap_bytes: 12 * GB }} />))
-    expect(screen.getByText(/Using/).textContent).toContain('of 12 GB. The disk has less room than the limit below')
+    expect(screen.getByText(/used/).textContent).toContain('of 12 GB used — the disk has less room than the limit below')
+    rerender(withQuery(<VideoStorageCard settings={{ ...settings, video_usage_bytes: 4.5 * 1024 * 1024 }} />))
+    expect(screen.getByText(/used/).textContent).toBe('5 MB of 20 GB used')
   })
 
-  it('saves the window in days and the cap in MB', async () => {
+  it('takes both values from sliders, named by their labels, and saves days and MB', async () => {
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ ok: true }))
     vi.stubGlobal('fetch', fetchMock)
     render(withQuery(<VideoStorageCard settings={settings} />))
-    const days = screen.getByLabelText("Keep passed flows' videos for (days)")
-    const cap = screen.getByLabelText('Storage for videos (GB)')
-    expect((days as HTMLInputElement).value).toBe('3')
-    expect((cap as HTMLInputElement).value).toBe('20')
-    await userEvent.clear(days)
-    await userEvent.type(days, '7')
-    await userEvent.clear(cap)
-    await userEvent.type(cap, '5.5')
+    const days = screen.getByRole('slider', { name: "Keep passed flows' videos for" })
+    const cap = screen.getByRole('slider', { name: 'Storage for videos' })
+    expect(days.getAttribute('aria-valuenow')).toBe('3')
+    expect(cap.getAttribute('aria-valuenow')).toBe('20')
+    fireEvent.keyDown(days, { key: 'ArrowRight' })
+    fireEvent.keyDown(days, { key: 'ArrowRight' })
+    fireEvent.keyDown(cap, { key: 'ArrowLeft' })
+    expect(screen.getByText('5 days')).toBeTruthy()
+    expect(screen.getByText('19 GB')).toBeTruthy()
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const body = fetchMock.mock.calls[0]![1]!.body as FormData
-    expect(body.get('video_pass_retention_days')).toBe('7')
-    expect(body.get('video_storage_cap_mb')).toBe('5632')
+    expect(body.get('video_pass_retention_days')).toBe('5')
+    expect(body.get('video_storage_cap_mb')).toBe(String(19 * 1024))
   })
 
-  it('refuses a window past a year without sending it', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
-    render(withQuery(<VideoStorageCard settings={settings} />))
-    const days = screen.getByLabelText("Keep passed flows' videos for (days)")
-    await userEvent.clear(days)
-    await userEvent.type(days, '400')
-    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
-    expect(await screen.findByText('At most 365 days')).toBeTruthy()
-    expect(fetchMock).not.toHaveBeenCalled()
+  it('widens a slider to reach a value set beyond its usual range, rather than clamping it', () => {
+    render(withQuery(<VideoStorageCard settings={{ ...settings, video_pass_retention_days: 90, video_storage_cap_mb: 500 * 1024 }} />))
+    expect(screen.getByRole('slider', { name: "Keep passed flows' videos for" }).getAttribute('aria-valuemax')).toBe('90')
+    expect(screen.getByRole('slider', { name: 'Storage for videos' }).getAttribute('aria-valuenow')).toBe('500')
   })
 
   it('draws nothing for a relay older than flow videos', () => {
