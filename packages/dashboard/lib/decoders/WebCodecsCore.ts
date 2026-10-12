@@ -119,6 +119,11 @@ export class WebCodecsCore {
     })
   }
 
+  /** See `Decoder.flush`. */
+  flush(): void {
+    this.decoder?.flush().catch(() => { /* closed or reset meanwhile: nothing left to present */ })
+  }
+
   close(): void {
     this.decoder?.close()
     this.decoder = null

@@ -1,6 +1,6 @@
 ---
 title: Flow Runs
-description: "See tapflow flow run's records on the dashboard's Flow Runs page: CI and local runs apart, each flow's result and the screen it failed on or ended on, and a link to watch the device while a run is in progress."
+description: "See tapflow flow run's records on the dashboard's Flow Runs page: CI and local runs apart, each flow's result, the screen it failed on or ended on and a video of the whole flow, and a link to watch the device while a run is in progress."
 ---
 
 # Flow Runs
@@ -31,6 +31,15 @@ A run's page lists its flows in the order they ran.
 - A flow the run never reached is marked **Not run**.
 - **Open the CI run** opens the run on the CI side when the CI recorded a link to it. For a run with a build, **Other runs of this build** lists the same build's other runs.
 
+### Watch a flow's video {#flow-video}
+
+A flow the runner kept a video of has a **Play the video** button. It downloads the whole flow, start to end, and plays it in the same device frame the live view draws. The screenshot shows the screen a flow ended on; the video shows how it got there. Nothing is downloaded until you select the button.
+
+- The dots above the bar mark where each step started, red where one failed. A grey bar is a stretch that never reached the relay. Hover over a dot or bar to see what it is, and select it to go there.
+- Dragging the bar catches on each step's start. Playback speed goes from 0.5× to 4×.
+- A flow with no video says why: the agent sent JPEG, the device's stream had no frame a video could start from, or the video is past its retention window.
+- A video that ends early says why too: it reached the 100 MB limit for one flow, video storage was full, the run was cancelled, the runner disconnected, or the end of the video never reached the relay.
+
 ### Watch a run in progress {#watch-a-run}
 
 While a run is in progress, the list and the run's page refresh every few seconds. **Watch the device** on the run's page shows the device the runner is driving, live and read-only: nothing you click reaches the device. Up to 4 people can watch a session.
@@ -48,6 +57,7 @@ While a run is in progress, the list and the run's page refresh every few second
 
 - Give `tapflow flow run` an API-type token (`view, builds:write`) and every run is recorded. Pass it with `--token` or `TAPFLOW_TOKEN`, or keep it in the [token file](/automation/mcp-server#token-file). The details are in the [Flow reference's run records](/automation/flows#run-records).
 - Add `--no-record` to skip recording.
+- Video retention is set in the **Flow run videos** card of **Settings → Default** (Admin): how many days passed flows' videos are kept and how much storage videos may use, with what is in use now. The defaults are 3 days and 20 GB. A failed flow's video is kept as long as its run unless storage runs out: when storage is full the oldest passed videos go first, and failed ones only after every passed one has gone.
 - When you run it locally, the runner prints a link to the run's page when it ends. In CI it prints the run's id only, so the relay's address stays out of the log.
 - A run's record is deleted with its build; a record of a run with no build is deleted after 7 days.
 

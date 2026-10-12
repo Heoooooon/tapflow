@@ -114,6 +114,7 @@ export function useDecoderStream(opts: UseDecoderStreamOptions): void {
         tracker.onSubmit({ submitTime: recvAt, recvAt, recvInterval, capturedAt: meta?.capturedAt, relayedAt: meta?.relayedAt })
       }
       d.decode(data)
+      if (meta?.flush) d.flush?.()
       frameCount.current += 1
     }
 

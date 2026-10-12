@@ -1,6 +1,6 @@
 ---
 title: 팀·역할·토큰
-description: 대시보드 Settings의 하위 페이지입니다. 워크스페이스와 앱, 역할·초대·비밀번호 재설정을 관리하는 멤버 목록(Admin), CI와 원격 에이전트용 개인 액세스 토큰(Admin, Developer, QA)을 다룹니다.
+description: 대시보드 Settings의 하위 페이지입니다. 워크스페이스와 앱, 플로우 영상 저장 공간, 역할·초대·비밀번호 재설정을 관리하는 멤버 목록(Admin), CI와 원격 에이전트용 개인 액세스 토큰(Admin, Developer, QA)을 다룹니다.
 ---
 
 # 팀·역할·토큰
@@ -9,9 +9,10 @@ description: 대시보드 Settings의 하위 페이지입니다. 워크스페이
 
 ## Default
 
-모든 멤버가 처음 여는 페이지입니다. 닉네임, 아바타, 비밀번호 같은 프로필 설정은 누구에게나 같으며 [팀원 시작 가이드](/ko/get-started/teammates#profile)에 정리되어 있습니다. 역할에 따라 두 섹션이 더 보입니다.
+모든 멤버가 처음 여는 페이지입니다. 닉네임, 아바타, 비밀번호 같은 프로필 설정은 누구에게나 같으며 [팀원 시작 가이드](/ko/get-started/teammates#profile)에 정리되어 있습니다. 역할에 따라 세 섹션이 더 보입니다.
 
 - **Workspace** — 팀 이름과 로고를 설정합니다. Admin에게만 보입니다.
+- **Flow run videos** — 통과한 플로우의 영상을 며칠 남길지와 영상에 쓸 저장 공간을 정하고 지금 쓰는 용량을 봅니다. Admin에게만 보입니다. [플로우 실행 기록](/ko/automation/runs#recording)을 참고하세요.
 - **Apps** — 앱 이름을 바꾸거나 앱을 삭제합니다. Admin, Developer, QA에게 보이고 Viewer에게는 보이지 않습니다.
 
 ## Team

@@ -3,6 +3,7 @@
 // `AgentDevice` and `DeviceInfo` were this package's names for shapes protocol calls `DeviceSummary`
 // and `DeviceDetails`; the old `DeviceInfo` also collided with the relay's own `DeviceInfo`, which is
 // the *other* shape. Re-exported so this module stays the one import site for view code.
+import type { VideoSummary } from './runVideo'
 import type {
   AgentResources, AndroidButton, ChromeButton, ChromeData, ChromeRect,
   AndroidChrome, BrowserInbound, ChromePayload, DeviceDetails, DevicePosture, DeviceSummary,
@@ -97,6 +98,12 @@ export interface TeamMember {
 export interface WorkspaceSettings {
   team_name: string
   logo_url: string | null
+  /** Flow run videos (A4). Absent from a relay older than them. */
+  video_pass_retention_days?: number
+  video_storage_cap_mb?: number
+  video_usage_bytes?: number
+  /** The smaller of the cap and what the disk can give while keeping its floor free. */
+  video_effective_cap_bytes?: number
 }
 
 /** A row of `GET /api/v1/agents/:name/resources`. */
@@ -150,7 +157,7 @@ export interface RunStep {
 
 /** A flow of a run: reported, or still to come (`running` / `pending`), or never reached (`not-run`). */
 export type RunFlow =
-  | { idx: number; name: string; file: string | null; status: 'running' | 'pending' | 'not-run' }
+  | { idx: number; name: string; file: string | null; status: 'running' | 'pending' | 'not-run'; video?: VideoSummary | null }
   | {
       idx: number
       name: string
@@ -162,6 +169,8 @@ export type RunFlow =
       durationMs: number
       steps: RunStep[]
       hasScreenshot: boolean
+      /** Absent from a relay older than flow videos; null when this flow has none. */
+      video?: VideoSummary | null
     }
 
 /** `GET /api/v1/runs/:id`. `watchSessionId` is the session the runner holds now, while it runs. */

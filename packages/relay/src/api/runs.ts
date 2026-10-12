@@ -547,11 +547,13 @@ export function handleGetRun(
   res: http.ServerResponse,
   params: Record<string, string>,
   holders: RunHolders,
+  videosOf: (run: RunRow) => Map<number, unknown> = () => new Map(),
 ): void {
   if (!requireViewAuth(req, res)) return
   settleOrphanedRuns(holders)
   const run = findRun(params.id)
   if (!run) return json(res, 404, { error: 'Run not found' })
+  const videos = videosOf(run)
 
   const reported = new Map(
     (getDb().prepare('SELECT * FROM flow_run_flows WHERE run_seq = ? ORDER BY idx').all(run.seq) as FlowRow[])
@@ -564,7 +566,7 @@ export function handleGetRun(
     if (!f) {
       // Not reported yet: the first is the one running now, the rest are waiting — unless the run is over.
       const status = run.status !== 'running' ? 'not-run' : idx === firstUnreported ? 'running' : 'pending'
-      return { idx, name: p.name, file: p.file, status }
+      return { idx, name: p.name, file: p.file, status, video: videos.get(idx) ?? null }
     }
     return {
       idx, name: f.name, file: f.file, status: f.status,
@@ -572,6 +574,7 @@ export function handleGetRun(
       failureKind: f.failure_kind, failureMessage: f.failure_message, durationMs: f.duration_ms,
       steps: JSON.parse(f.steps_json) as unknown[],
       hasScreenshot: f.screenshot_file !== null,
+      video: videos.get(idx) ?? null,
     }
   })
 

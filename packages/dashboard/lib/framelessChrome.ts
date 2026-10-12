@@ -27,10 +27,10 @@ const frameless = new WeakSet<ChromeData>()
  * identity, and a new object on every render would tear them down each time. The map holds a handful of
  * entries at most: one per shape a session has seen.
  */
-export function framelessChrome(shape: { width: number; height: number }): ChromeData {
+export function framelessChrome(shape: { width: number; height: number }, cornerRadius?: number): ChromeData {
   const height = HEIGHT
   const width = Math.round(HEIGHT * shape.width / shape.height)
-  const key = `${width}x${height}`
+  const key = `${width}x${height}x${cornerRadius ?? 'guess'}`
   const cached = made.get(key)
   if (cached) return cached
   const chrome: ChromeData = {
@@ -44,7 +44,8 @@ export function framelessChrome(shape: { width: number; height: number }): Chrom
     // A modern iPhone's corners, roughly (an SE's square ones would look like a cropped picture), and an
     // iPad's much smaller ones: at the phone's ratio an iPad's content would be visibly cut at the corners.
     // Told apart by shape, since this is all there is to go on — every iPad is wider than 0.6.
-    screenCornerRadius: Math.round(width * (width / height > 0.6 ? 0.03 : 0.12)),
+    // `cornerRadius` overrides it: a replay draws the picture as recorded rather than a guessed device's shape.
+    screenCornerRadius: cornerRadius ?? Math.round(width * (width / height > 0.6 ? 0.03 : 0.12)),
     logicalWidth: Math.round(width / 2),
     logicalHeight: Math.round(height / 2),
     buttons: [],

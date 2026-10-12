@@ -26,6 +26,8 @@ export interface FrameMeta {
   /** Envelope wall-clock hops (epoch ms) for latency correlation; undefined when no envelope. */
   capturedAt?: number
   relayedAt?: number
+  /** Replay only: present this frame at once rather than when the next arrives (`Decoder.flush`). */
+  flush?: boolean
 }
 
 export type BinaryFrameHandler = (data: ArrayBuffer, meta?: FrameMeta) => void

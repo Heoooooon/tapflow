@@ -696,7 +696,7 @@ File:
 ```
 
 
-## Settings
+## Settings {#settings}
 
 ### `GET /api/v1/settings`
 
@@ -705,10 +705,17 @@ Return team settings. Requires sign-in.
 **Response `200`**
 
 ```json
-{ "team_name": "My Team", "logo_url": "/uploads/team/logo.png" }
+{
+  "team_name": "My Team",
+  "logo_url": "/uploads/team/logo.png",
+  "video_pass_retention_days": 3,
+  "video_storage_cap_mb": 20480,
+  "video_usage_bytes": 5368709120,
+  "video_effective_cap_bytes": 21474836480
+}
 ```
 
-`logo_url` is `null` when there is no logo.
+`logo_url` is `null` when there is no logo. The `video_*` fields are the [flow run videos](#run-videos) policy: `video_usage_bytes` is what videos use now, and `video_effective_cap_bytes` the smaller of the storage setting and the room the disk actually has.
 
 
 ### `PATCH /api/v1/settings`
@@ -719,7 +726,9 @@ Update team settings. **Admin only**.
 Content-Type: multipart/form-data
 
 Fields:
-  team_name  string  optional
+  team_name                  string  optional
+  video_pass_retention_days  number  optional  Days passed flows' videos are kept, 0–365
+  video_storage_cap_mb       number  optional  Storage for videos in MB, 100–10485760
 File:
   logo       image (PNG/JPEG, max 2 MB) — optional
 ```
@@ -898,7 +907,7 @@ A `build`, `before` or `after` that is not a non-negative integer gets `400`. An
 
 One run with each flow's result. It has the list item's fields plus:
 
-- `flows`: in the planned order. A reported flow carries `status` (`passed` or `failed`), `steps`, `device`, `durationMs` and `hasScreenshot`. A flow not reported yet is `running` (in progress now) or `pending` on a run in progress, and `not-run` on a finished one.
+- `flows`: in the planned order. A reported flow carries `status` (`passed` or `failed`), `steps`, `device`, `durationMs` and `hasScreenshot`. A flow with a video carries `video` with `ended`, `endReason`, `evicted`, `notRecorded` and `bytes`, and `null` when it has none; `notRecorded` says why the runner could not keep one (`jpeg`, `no-keyframe`). A flow not reported yet is `running` (in progress now) or `pending` on a run in progress, and `not-run` on a finished one.
 - `watchSessionId`: the session the runner holds now. Set only while the run is in progress; it goes in the [watch page](/automation/mcp-server#watch-the-device) address.
 
 An unknown run gets `404`.
@@ -906,6 +915,64 @@ An unknown run gets `404`.
 ### `GET /api/v1/runs/:id/flows/:idx/screenshot`
 
 The flow's screenshot as `image/png` or `image/jpeg`, or `404` when there is none.
+
+
+## Flow run videos {#run-videos}
+
+Each flow's video, uploaded by the runner as the flow runs. The runner opens a video (`open`), sends numbered chunks (`chunks`) and ends it (`end`); the dashboard reads the chunk list (`index`) and fetches the file, which also answers byte ranges. Writes follow the same rules as the run endpoints above, and the last flow's tail is still taken for 120 seconds after the runner's `finish`. Passed flows' videos are removed after the retention window, and when storage is full the oldest passed ones go first; both are [team settings](#settings).
+
+### `POST /api/v1/runs/:id/flows/:idx/video/open`
+
+Open a flow's video. The body is the video's metadata as JSON, up to 16 KB. `formatVersion` must be `1`; the rest is the runner's, stored as given.
+
+**Response `201`** `{ "ok": true, "nextSeq": 0 }`. An open video answers `200` with the `nextSeq` to send next; an ended one gets `409`.
+
+### `POST /api/v1/runs/:id/flows/:idx/video/chunks/:seq`
+
+Send chunk `seq`, from 0 to 10000. The body is the chunk's bytes as they are, up to 8 MB.
+
+```
+Headers:
+  X-Start-Ms  required  The chunk's first record on the video's clock, in ms
+  X-Keyframe  optional  "1" when the chunk starts with a keyframe decoding can begin from
+```
+
+**Response `200`** `{ "ok": true, "nextSeq": n }`. A chunk already taken answers `200` with `"duplicate": true`. A video not opened gets `404`, an ended one `409`, and one no longer kept `410`. Over 8 MB gets `413` (`reason: "chunk-too-large"`); a flow's video past 100 MB gets `413` (`reason: "size-limit"`) and ends. Full storage gets `507` (`reason: "storage-full"`) and ends the video.
+
+### `POST /api/v1/runs/:id/flows/:idx/video/end`
+
+End the video. Only the first ending is recorded, so sending it again changes nothing.
+
+```
+Body (JSON):
+  lastSeq  number  required  The last chunk sent, or -1 when none was
+  reason   string  required  done | cancelled | size-limit | storage-full | runner-lost | truncated
+```
+
+**Response `200`** `{ "ok": true }`
+
+### `GET /api/v1/runs/:id/flows/:idx/video/index`
+
+The video's chunk list. Call it with the session cookie or a `view`-scope PAT.
+
+```json
+{
+  "meta": { "formatVersion": 1, "codec": "h264", "platform": "ios", "clockBase": 1760230395000, "flowStartMs": 1500 },
+  "bytes": 2483201,
+  "ended": true,
+  "endReason": "done",
+  "evicted": false,
+  "chunks": [{ "seq": 0, "offset": 0, "length": 412300, "startMs": 0, "keyframe": true }],
+  "gaps": []
+}
+```
+
+`gaps` lists the chunks that never arrived. With no `end`, a video is `ended` once its run finished more than 120 seconds ago (`endReason: "truncated"`) or the relay closed the run because its runner disconnected (`runner-lost`).
+
+### `GET /api/v1/runs/:id/flows/:idx/video`
+
+The video file as `application/octet-stream`. A `Range` header gets part of it (`206`); a range outside the file gets `416`. A video still being recorded is `Cache-Control: no-store`; an ended one is `private` with an `ETag`. A video no longer kept gets `410`.
+
 
 
 ## Agents

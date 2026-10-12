@@ -21,6 +21,11 @@ interface WatchedDeviceProps {
   platform: string;
   formFactor?: FormFactor;
   binaryFrameHandlerRef: MutableRefObject<BinaryFrameHandler | undefined>;
+  /** A recorded video rather than a live stream: no "waiting for frame" — a paused replay has no frames coming. */
+  replay?: boolean;
+  /** Remounts the screen (a new decoder) when it changes, keeping what this component learned — the stream's size
+   *  for a frameless device — so a replay's seek does not redraw the frame at a guessed size first. */
+  screenKey?: string | number;
 }
 
 /**
@@ -29,21 +34,22 @@ interface WatchedDeviceProps {
  * recording. Rotation is the holder's own state and not on the wire, so the device is drawn upright; no
  * AI client rotates today.
  */
-export function WatchedDevice({ chrome, deviceReady, platform, formFactor, binaryFrameHandlerRef }: WatchedDeviceProps) {
+export function WatchedDevice({ chrome, deviceReady, platform, formFactor, binaryFrameHandlerRef, replay = false, screenKey }: WatchedDeviceProps) {
   const [streamSize, setStreamSize] = useState<{ width: number; height: number } | null>(null);
   // Choosing which screen to mount is routing, not drawing — the same split `DeviceViewer` makes, and for
   // the same reason: an iOS agent that could not build a frame sends none, and the stream must still show.
   const sentIos = chrome !== null && 'framePng' in chrome ? (chrome as ChromeData) : null;
   const android = chrome !== null && !('framePng' in chrome) ? (chrome as AndroidChrome) : null;
   const ios = sentIos ?? (deviceReady && platform === 'ios' && !android
-    ? framelessChrome(streamSize ?? skeletonSize(formFactor, platform))
+    // A replay with no recorded chrome draws the picture square-cornered: the rounding is a guess, not the device's.
+    ? framelessChrome(streamSize ?? skeletonSize(formFactor, platform), replay ? 0 : undefined)
     : null);
 
   if (ios) {
-    return <WatchedIOS chrome={ios} formFactor={formFactor} binaryFrameHandlerRef={binaryFrameHandlerRef} onStreamSize={setStreamSize} />;
+    return <WatchedIOS key={screenKey} chrome={ios} formFactor={formFactor} binaryFrameHandlerRef={binaryFrameHandlerRef} onStreamSize={setStreamSize} replay={replay} />;
   }
   if (android) {
-    return <WatchedAndroid chrome={android} deviceReady={deviceReady} binaryFrameHandlerRef={binaryFrameHandlerRef} />;
+    return <WatchedAndroid key={screenKey} chrome={android} deviceReady={deviceReady} binaryFrameHandlerRef={binaryFrameHandlerRef} />;
   }
   return (
     <div aria-hidden="true" style={{ background: '#1c1c1e', borderRadius: '34px', padding: '12px' }}>
@@ -52,17 +58,19 @@ export function WatchedDevice({ chrome, deviceReady, platform, formFactor, binar
   );
 }
 
-function WatchedIOS({ chrome, formFactor, binaryFrameHandlerRef, onStreamSize }: {
+function WatchedIOS({ chrome, formFactor, binaryFrameHandlerRef, onStreamSize, replay }: {
   chrome: ChromeData;
   formFactor?: FormFactor;
   binaryFrameHandlerRef: MutableRefObject<BinaryFrameHandler | undefined>;
   onStreamSize: (size: { width: number; height: number }) => void;
+  replay: boolean;
 }) {
   const { fps, frameCount } = useFps();
   const screen = useIOSScreen({ chrome, binaryFrameHandlerRef, fps, frameCount, onCanvasResize: onStreamSize });
   return (
     <>
-      <IOSDeviceScreen screen={screen} chrome={chrome} formFactor={formFactor} isLandscape={false} joined fps={fps} />
+      {/* `joined` is what lets the screen say a live stream stalled; a replay is never waiting on one. */}
+      <IOSDeviceScreen screen={screen} chrome={chrome} formFactor={formFactor} isLandscape={false} joined={!replay} fps={fps} />
       {screen.decoderUnsupported && <UnsupportedDecoder />}
     </>
   );

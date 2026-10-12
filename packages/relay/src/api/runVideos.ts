@@ -359,6 +359,34 @@ function readTarget(req: http.IncomingMessage, res: http.ServerResponse, params:
   return { run, video }
 }
 
+function endReasonOf(video: VideoRow, run: RunRow, ended: boolean): string | null {
+  return video.end_reason ?? (ended && video.ended_at === null ? (run.finished_by === 'relay' ? 'runner-lost' : 'truncated') : null)
+}
+
+/** What the run page needs to know about each flow's video before it loads one: whether there is one, and its state. */
+export interface VideoSummary {
+  ended: boolean
+  endReason: string | null
+  evicted: boolean
+  /** Set when the runner opened the video only to say it could not keep it (`jpeg`, `no-keyframe`). */
+  notRecorded: string | null
+  bytes: number
+}
+
+/** Each flow's video by flow index, for `GET /api/v1/runs/:id`. Passed in by the server so runs.ts needs no import of this file. */
+export function videoSummaries(run: RunRow): Map<number, VideoSummary> {
+  const rows = getDb().prepare('SELECT * FROM flow_run_videos WHERE run_seq = ?').all(run.seq) as VideoRow[]
+  return new Map(rows.map((v) => {
+    const ended = videoEnded(v, run)
+    let notRecorded: string | null = null
+    try {
+      const meta = JSON.parse(v.meta_json) as { notRecorded?: unknown }
+      if (typeof meta.notRecorded === 'string') notRecorded = meta.notRecorded
+    } catch { /* the open call's JSON was validated when stored */ }
+    return [v.idx, { ended, endReason: endReasonOf(v, run, ended), evicted: v.evicted_at !== null, notRecorded, bytes: v.bytes }]
+  }))
+}
+
 /** The player's map of the video: its metadata, where each chunk lies, which seqs never arrived, and its state. */
 export function handleVideoIndex(req: http.IncomingMessage, res: http.ServerResponse, params: Record<string, string>, holders: RunHolders): void {
   const t = readTarget(req, res, params, holders)
@@ -376,7 +404,7 @@ export function handleVideoIndex(req: http.IncomingMessage, res: http.ServerResp
     meta: JSON.parse(video.meta_json) as unknown,
     bytes: video.bytes,
     ended,
-    endReason: video.end_reason ?? (ended && video.ended_at === null ? (run.finished_by === 'relay' ? 'runner-lost' : 'truncated') : null),
+    endReason: endReasonOf(video, run, ended),
     evicted: video.evicted_at !== null,
     chunks: chunks.map((c) => ({ seq: c.seq, offset: c.offset, length: c.length, startMs: c.start_ms, keyframe: c.keyframe === 1 })),
     gaps,
