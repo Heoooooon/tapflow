@@ -116,24 +116,28 @@ function isReported(flow: RunFlow): flow is ReportedFlow {
 
 function FlowItem({ runId, flow }: { runId: string; flow: RunFlow }) {
   return (
-    <li className="rounded-md border bg-card p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium">{flow.name}</span>
-        {isReported(flow) ? (
-          <>
-            <Badge tone={flow.status === 'passed' ? 'done' : 'rejected'} className="text-xs">
-              {flow.status === 'passed' ? 'Passed' : flow.failureKind === 'environment' ? 'Environment problem' : 'Failed'}
-            </Badge>
-            <TechLabel className="text-muted-foreground">{formatDuration(flow.durationMs)}</TechLabel>
-            {flow.device?.name && <span className="text-xs text-muted-foreground">{flow.device.name}</span>}
-          </>
-        ) : (
-          <Badge tone={flow.status === 'running' ? 'progress' : 'backlog'} className="text-xs">{UNREPORTED_FLOW_LABEL[flow.status]}</Badge>
-        )}
+    // Each kind of content is its own group — what the flow is, why it failed, its steps, its screen, its video — with
+    // more room between groups than inside one, so the card reads as those parts.
+    <li className="flex flex-col gap-6 rounded-md border bg-card p-4">
+      <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium">{flow.name}</span>
+          {isReported(flow) ? (
+            <>
+              <Badge tone={flow.status === 'passed' ? 'done' : 'rejected'} className="text-xs">
+                {flow.status === 'passed' ? 'Passed' : flow.failureKind === 'environment' ? 'Environment problem' : 'Failed'}
+              </Badge>
+              <TechLabel className="text-muted-foreground">{formatDuration(flow.durationMs)}</TechLabel>
+              {flow.device?.name && <span className="text-xs text-muted-foreground">{flow.device.name}</span>}
+            </>
+          ) : (
+            <Badge tone={flow.status === 'running' ? 'progress' : 'backlog'} className="text-xs">{UNREPORTED_FLOW_LABEL[flow.status]}</Badge>
+          )}
+        </div>
+        {flow.file && <TechLabel className="block text-muted-foreground">{flow.file}</TechLabel>}
       </div>
-      {flow.file && <TechLabel className="mt-1 block text-muted-foreground">{flow.file}</TechLabel>}
       {isReported(flow) && flow.status === 'failed' && (
-        <div className="mt-3 flex flex-col gap-3">
+        <>
           {flow.failureMessage && <p className="text-sm text-destructive">{flow.failureMessage}</p>}
           {flow.steps.length > 0 && (
             <ol className="flex flex-col gap-1 text-xs" aria-label={`Steps of ${flow.name}`}>
@@ -153,17 +157,13 @@ function FlowItem({ runId, flow }: { runId: string; flow: RunFlow }) {
             </ol>
           )}
           {flow.hasScreenshot && <LastScreen runId={runId} flow={flow} />}
-        </div>
+        </>
       )}
       {/* A passed flow's last screen is the evidence that it passed — what the login landed on. */}
-      {isReported(flow) && flow.status === 'passed' && flow.hasScreenshot && (
-        <div className="mt-3"><LastScreen runId={runId} flow={flow} /></div>
-      )}
+      {isReported(flow) && flow.status === 'passed' && flow.hasScreenshot && <LastScreen runId={runId} flow={flow} />}
       {/* The whole flow, passed or failed: the screenshot shows where it ended, the video how it got there. */}
       {flow.video && (
-        <div className="mt-3">
-          <RunVideo runId={runId} idx={flow.idx} flowName={flow.name} summary={flow.video} running={!flow.video.ended} />
-        </div>
+        <RunVideo runId={runId} idx={flow.idx} flowName={flow.name} summary={flow.video} running={!flow.video.ended} />
       )}
     </li>
   )

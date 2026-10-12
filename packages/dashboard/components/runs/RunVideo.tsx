@@ -214,7 +214,9 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
   const snap = (ms: number) => (dragging.current ? snapToStep(video, ms) : ms)
 
   return (
-    <div className="flex flex-col gap-3">
+    // Three groups — the picture, where you are in it, what you can do — 16px apart: closer than the flow card's
+    // groups, since they are one player.
+    <div className="flex flex-col gap-4">
       <div role="region" aria-label={`Video of ${flowName}`} className="w-fit origin-top-left" style={{ zoom: 0.6 }}>
         <WatchedDevice
           key={epoch}
@@ -225,74 +227,78 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
           replay
         />
       </div>
-      <div className="flex max-w-xl flex-col gap-2">
-        {/* Marks above the bar: a dot where each step starts (red where it failed), a bar where frames never reached
-            the relay. Hover or focus says which; a click goes there. Inset by the thumb's radius, so a mark sits over
-            the thumb's centre at that time — Radix keeps the thumb inside the track. Exempt from the buttons' press
-            nudge (index.css): a mark that moves when clicked reads as having moved in time. Centred by margin, not a
-            transform, so nothing on press can displace it. */}
-        <TooltipProvider delayDuration={150}>
-          <div className="relative mx-2 h-2">
-            {video.gaps.map((g, i) => (
-              <Tooltip key={`g${i}`}>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label={`${formatClock(g.fromMs)} to ${formatClock(g.toMs)}: did not reach the relay`}
-                    onClick={() => seek(g.toMs, !playing)}
-                    className="absolute top-0 h-2 rounded-full bg-muted-foreground/40 active:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    style={{ left: pct(g.fromMs), width: `max(8px, calc(${pct(g.toMs)} - ${pct(g.fromMs)}))` }}
-                  />
-                </TooltipTrigger>
-                <TooltipContent>{formatClock(g.fromMs)}–{formatClock(g.toMs)} · did not reach the relay</TooltipContent>
-              </Tooltip>
-            ))}
-            {video.steps.map((st) => (
-              <Tooltip key={`s${st.index}`}>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label={`${formatClock(st.ms)} ${st.name}${st.status === 'failed' ? ', failed' : ''}`}
-                    onClick={() => seek(st.ms, !playing)}
-                    className={`absolute top-0 -ml-1 h-2 w-2 rounded-full active:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${st.status === 'failed' ? 'bg-destructive' : 'bg-muted-foreground'}`}
-                    style={{ left: pct(st.ms) }}
-                  />
-                </TooltipTrigger>
-                <TooltipContent>
-                  {formatClock(st.ms)} · {st.name}{st.status === 'failed' && <span className="font-medium"> · failed</span>}
-                </TooltipContent>
-              </Tooltip>
-            ))}
-          </div>
-        </TooltipProvider>
-        <Slider
-          min={0}
-          max={Math.max(1, video.durationMs)}
-          step={50}
-          value={[shownMs]}
-          onPointerDown={() => { dragging.current = true }}
-          onValueChange={([v]) => seek(snap(v ?? 0), !playing)}
-          onValueCommit={() => { dragging.current = false }}
-          aria-label={`Position in the video of ${flowName}`}
-          aria-valuetext={`${formatClock(shownMs)} of ${formatClock(video.durationMs)}`}
-        />
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}>
-            {playing ? <Pause className="h-3.5 w-3.5" aria-hidden /> : <Play className="h-3.5 w-3.5" aria-hidden />}
-          </Button>
-          <TechLabel className="text-muted-foreground">{formatClock(shownMs)} / {formatClock(video.durationMs)}</TechLabel>
-          <Select value={String(speed)} onValueChange={(v) => setSpeed(Number(v) as (typeof SPEEDS)[number])}>
-            <SelectTrigger aria-label="Playback speed" className="ml-auto h-8 w-20 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {SPEEDS.map((sp) => <SelectItem key={sp} value={String(sp)}>{sp}×</SelectItem>)}
-            </SelectContent>
-          </Select>
+      <div className="flex max-w-xl flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          {/* Marks above the bar: a dot where each step starts (red where it failed), a bar where frames never reached
+              the relay. Hover or focus says which; a click goes there. Inset by the thumb's radius, so a mark sits over
+              the thumb's centre at that time — Radix keeps the thumb inside the track. Exempt from the buttons' press
+              nudge (index.css): a mark that moves when clicked reads as having moved in time. Centred by margin, not a
+              transform, so nothing on press can displace it. */}
+          <TooltipProvider delayDuration={150}>
+            <div className="relative mx-2 h-2">
+              {video.gaps.map((g, i) => (
+                <Tooltip key={`g${i}`}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`${formatClock(g.fromMs)} to ${formatClock(g.toMs)}: did not reach the relay`}
+                      onClick={() => seek(g.toMs, !playing)}
+                      className="absolute top-0 h-2 rounded-full bg-muted-foreground/40 active:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      style={{ left: pct(g.fromMs), width: `max(8px, calc(${pct(g.toMs)} - ${pct(g.fromMs)}))` }}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent>{formatClock(g.fromMs)}–{formatClock(g.toMs)} · did not reach the relay</TooltipContent>
+                </Tooltip>
+              ))}
+              {video.steps.map((st) => (
+                <Tooltip key={`s${st.index}`}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`${formatClock(st.ms)} ${st.name}${st.status === 'failed' ? ', failed' : ''}`}
+                      onClick={() => seek(st.ms, !playing)}
+                      className={`absolute top-0 -ml-1 h-2 w-2 rounded-full active:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${st.status === 'failed' ? 'bg-destructive' : 'bg-muted-foreground'}`}
+                      style={{ left: pct(st.ms) }}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {formatClock(st.ms)} · {st.name}{st.status === 'failed' && <span className="font-medium"> · failed</span>}
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
+          </TooltipProvider>
+          <Slider
+            min={0}
+            max={Math.max(1, video.durationMs)}
+            step={50}
+            value={[shownMs]}
+            onPointerDown={() => { dragging.current = true }}
+            onValueChange={([v]) => seek(snap(v ?? 0), !playing)}
+            onValueCommit={() => { dragging.current = false }}
+            aria-label={`Position in the video of ${flowName}`}
+            aria-valuetext={`${formatClock(shownMs)} of ${formatClock(video.durationMs)}`}
+          />
         </div>
-        {(endNote || (running && !index.ended)) && (
-          <p className="text-xs text-muted-foreground">
-            {[endNote, running && !index.ended ? 'Still recording: reload the video for the rest.' : null].filter(Boolean).join(' ')}
-          </p>
-        )}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}>
+              {playing ? <Pause className="h-3.5 w-3.5" aria-hidden /> : <Play className="h-3.5 w-3.5" aria-hidden />}
+            </Button>
+            <TechLabel className="text-muted-foreground">{formatClock(shownMs)} / {formatClock(video.durationMs)}</TechLabel>
+            <Select value={String(speed)} onValueChange={(v) => setSpeed(Number(v) as (typeof SPEEDS)[number])}>
+              <SelectTrigger aria-label="Playback speed" className="ml-auto h-8 w-20 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SPEEDS.map((sp) => <SelectItem key={sp} value={String(sp)}>{sp}×</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          {(endNote || (running && !index.ended)) && (
+            <p className="text-xs text-muted-foreground">
+              {[endNote, running && !index.ended ? 'Still recording: reload the video for the rest.' : null].filter(Boolean).join(' ')}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   )
