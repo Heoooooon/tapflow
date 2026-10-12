@@ -16,8 +16,6 @@ import { getRunVideo, queryKeys } from '@/lib/queries'
 import type { ChromePayload } from '@/lib/types'
 
 const SPEEDS = [0.5, 1, 2, 4] as const
-/** How often the clock and scrubber re-render while playing; frames are delivered on every animation frame. */
-const UI_TICK_MS = 100
 
 /**
  * A flow's video on the run page (A4): the whole flow, replayed inside the same device frame the live viewer draws.
@@ -154,7 +152,6 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
     if (!playing) return
     let raf = 0
     let last = performance.now()
-    let lastUi = 0
     const tick = (now: number) => {
       const target = clock.current.ms + (now - last) * speed
       last = now
@@ -168,10 +165,9 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
       }
       clock.current.ms = Math.min(target, video.durationMs)
       deliver(clock.current.ms)
-      if (now - lastUi >= UI_TICK_MS || clock.current.ms >= video.durationMs) {
-        lastUi = now
-        setShownMs(clock.current.ms)
-      }
+      // Every animation frame, so the thumb glides rather than steps. Cheap: the compiler keeps the device screen,
+      // whose props do not change, from re-rendering; only the bar and the clock do.
+      setShownMs(clock.current.ms)
       if (clock.current.ms >= video.durationMs) {
         // Stopped on the last frame: shown by the same path as a paused seek, so it is the last one and not the one before.
         setPlaying(false)
@@ -213,7 +209,9 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
       <div className="flex max-w-xl flex-col gap-2">
         {/* Marks above the bar: a dot where each step starts (red where it failed), a bar where frames never reached
             the relay. Hover or focus says which; a click goes there. Inset by the thumb's radius, so a mark sits over
-            the thumb's centre at that time — Radix keeps the thumb inside the track. */}
+            the thumb's centre at that time — Radix keeps the thumb inside the track. Exempt from the buttons' press
+            nudge (index.css): a mark that moves when clicked reads as having moved in time. Centred by margin, not a
+            transform, so nothing on press can displace it. */}
         <TooltipProvider delayDuration={150}>
           <div className="relative mx-2.5 h-2">
             {video.gaps.map((g, i) => (
@@ -223,7 +221,7 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
                     type="button"
                     aria-label={`${formatClock(g.fromMs)} to ${formatClock(g.toMs)}: did not reach the relay`}
                     onClick={() => seek(g.toMs, !playing)}
-                    className="absolute top-0 h-2 rounded-full bg-muted-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="absolute top-0 h-2 rounded-full bg-muted-foreground/40 active:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     style={{ left: pct(g.fromMs), width: `max(8px, calc(${pct(g.toMs)} - ${pct(g.fromMs)}))` }}
                   />
                 </TooltipTrigger>
@@ -237,7 +235,7 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
                     type="button"
                     aria-label={`${formatClock(st.ms)} ${st.name}${st.status === 'failed' ? ', failed' : ''}`}
                     onClick={() => seek(st.ms, !playing)}
-                    className={`absolute top-0 h-2 w-2 -translate-x-1/2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${st.status === 'failed' ? 'bg-destructive' : 'bg-muted-foreground'}`}
+                    className={`absolute top-0 -ml-1 h-2 w-2 rounded-full active:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${st.status === 'failed' ? 'bg-destructive' : 'bg-muted-foreground'}`}
                     style={{ left: pct(st.ms) }}
                   />
                 </TooltipTrigger>
