@@ -94,7 +94,31 @@ Any MCP-compatible client can use tapflow. Add the following to your MCP config 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `TAPFLOW_RELAY_URL` | Relay WebSocket URL | `ws://localhost:4000` |
-| `TAPFLOW_TOKEN` | An **API**-type PAT (`view, builds:write`), created in **Settings → Tokens** | (required) |
+| `TAPFLOW_TOKEN` | An **API**-type PAT (`view, builds:write`), created in **Settings → Tokens**. Leave it out to read the [token file](#token-file) | (none) |
+| `TAPFLOW_TOKEN_FILE` | Path of the token file | `~/.config/tapflow/credentials.json` |
+
+## Keep the token in a file {#token-file}
+
+Without `TAPFLOW_TOKEN`, the MCP server reads its token from a file. When the relay refuses the token, the server reads the file again and retries once, so replacing a token needs no re-registration and no restart.
+
+- The file is `~/.config/tapflow/credentials.json`, or `tapflow/credentials.json` under `XDG_CONFIG_HOME` when that is set, or the path in `TAPFLOW_TOKEN_FILE`. It is in the home directory of the computer that runs the MCP server, not of the Mac the relay runs on.
+- Each relay has its own token, keyed by the relay address's origin; write `ws://` as `http://` and `wss://` as `https://`.
+- The file holds a token, so keep it at mode `600`, readable only by you. The MCP server warns when other users can read it.
+
+```json
+{
+  "version": 1,
+  "relays": {
+    "http://localhost:4000": { "token": "tflw_pat_your_token_here" }
+  }
+}
+```
+
+`TAPFLOW_TOKEN`, when set, wins over the file and is never replaced by it. To move a registered `TAPFLOW_TOKEN` into the file, remove it from the MCP registration.
+
+When a token is revoked, the relay closes the connection within 30 seconds. Write the new token to the file and the next tool call reconnects with it. The relay releases the sessions the old connection held, so call `connect_device` again.
+
+Connected straight to the relay's port on the Mac it runs on, the MCP server starts and drives devices without a token. `screenshot`, `query_ui_tree` and `list_builds` still need one. When the relay refuses a token, the error says which relay refused it, where the token came from, and how to fix it.
 
 ## Available tools
 

@@ -81,10 +81,13 @@ describe('TapflowClient after the relay closes it for its token', () => {
     expect(r.auths).toEqual(['Bearer tflw_pat_old'])
 
     store(r.port, 'tflw_pat_new')
-    await Promise.all([client.reconnectIfRotated(), client.reconnectIfRotated()])
+    // Two tools at once: the second waits for the one reconnect rather than running on no socket.
+    const first = client.reconnectIfRotated()
+    await client.reconnectIfRotated()
+    expect(await client.listDevices()).toEqual([])
+    await first
     expect(r.auths).toEqual(['Bearer tflw_pat_old', 'Bearer tflw_pat_new'])
     expect(client.releasedByReconnect('s1')).toContain('call connect_device again')
-    expect(await client.listDevices()).toEqual([])
 
     await client.connectDevice('s1')
     expect(client.releasedByReconnect('s1')).toBeUndefined()

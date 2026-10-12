@@ -374,7 +374,7 @@ tapflow flow run .tapflow/flows/login-smoke.yaml
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--relay <url>` | `ws://localhost:4000` | Relay WebSocket URL. Does not read `relay.url`. |
-| `--token <token>` | `TAPFLOW_TOKEN` env | Personal access token (PAT) for a remote relay. Needs an API-type token (`view, builds:write`). |
+| `--token <token>` | `TAPFLOW_TOKEN` env, then the [token file](/automation/mcp-server#token-file) | Personal access token (PAT) for a remote relay. Needs an API-type token (`view, builds:write`). |
 | `--session <id>` | — | Target session ID (from the MCP server's `list_devices`) |
 | `--device <name>` | — | Target device by name. Boots it when it is shut down. |
 | `--build <id>` | — | Build under test. Installed before the run and launched by the `launchApp` step. |

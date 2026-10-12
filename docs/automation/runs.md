@@ -46,7 +46,7 @@ While a run is in progress, the list and the run's page refresh every few second
 
 ## Recording runs (operator) {#recording}
 
-- Give `tapflow flow run` an API-type token (`view, builds:write`) and every run is recorded. Pass it with `--token` or `TAPFLOW_TOKEN`. The details are in the [Flow reference's run records](/automation/flows#run-records).
+- Give `tapflow flow run` an API-type token (`view, builds:write`) and every run is recorded. Pass it with `--token` or `TAPFLOW_TOKEN`, or keep it in the [token file](/automation/mcp-server#token-file). The details are in the [Flow reference's run records](/automation/flows#run-records).
 - Add `--no-record` to skip recording.
 - When you run it locally, the runner prints a link to the run's page when it ends. In CI it prints the run's id only, so the relay's address stays out of the log.
 - A run's record is deleted with its build; a record of a run with no build is deleted after 7 days.

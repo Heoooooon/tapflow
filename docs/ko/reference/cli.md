@@ -353,7 +353,7 @@ tapflow flow run .tapflow/flows/login-smoke.yaml
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
 | `--relay <url>` | `ws://localhost:4000` | 릴레이 WebSocket URL. `relay.url` 설정을 읽지 않습니다. |
-| `--token <token>` | `TAPFLOW_TOKEN` 환경변수 | 원격 릴레이에 접속할 개인 액세스 토큰(PAT). API 유형 토큰(`view, builds:write`)이 필요합니다. |
+| `--token <token>` | `TAPFLOW_TOKEN` 환경변수, 그다음 [토큰 파일](/ko/automation/mcp-server#token-file) | 원격 릴레이에 접속할 개인 액세스 토큰(PAT). API 유형 토큰(`view, builds:write`)이 필요합니다. |
 | `--session <id>` | — | 대상 세션 ID(MCP 서버의 `list_devices`로 확인) |
 | `--device <name>` | — | 대상 기기 이름. 꺼져 있으면 부팅합니다. |
 | `--build <id>` | — | 테스트할 빌드 ID. 실행 전에 설치하고 `launchApp` 스텝이 이 빌드를 실행합니다. |

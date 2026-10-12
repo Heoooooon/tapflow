@@ -46,7 +46,7 @@ App Center의 빌드 행에 있는 **Runs** 버튼을 누르면 그 빌드의 �
 
 ## 기록 남기기(운영자) {#recording}
 
-- `tapflow flow run`에 API 유형 토큰(`view, builds:write`)을 주면 실행마다 기록이 남습니다. 토큰은 `--token`이나 `TAPFLOW_TOKEN`으로 줍니다. 자세한 내용은 [플로우 레퍼런스의 실행 기록](/ko/automation/flows#run-records)을 참고하세요.
+- `tapflow flow run`에 API 유형 토큰(`view, builds:write`)을 주면 실행마다 기록이 남습니다. 토큰은 `--token`이나 `TAPFLOW_TOKEN`으로 주거나 [토큰 파일](/ko/automation/mcp-server#token-file)에 둡니다. 자세한 내용은 [플로우 레퍼런스의 실행 기록](/ko/automation/flows#run-records)을 참고하세요.
 - 기록하지 않으려면 `--no-record`를 붙입니다.
 - 로컬에서 실행하면 러너가 실행이 끝날 때 그 실행 페이지의 링크를 출력합니다. CI에서는 릴레이 주소가 로그에 남지 않도록 실행 ID만 출력합니다.
 - 빌드에 딸린 기록은 그 빌드가 지워질 때 함께 지워지고 빌드 없이 실행한 기록은 7일 뒤 지워집니다.
