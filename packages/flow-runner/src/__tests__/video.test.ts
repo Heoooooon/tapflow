@@ -38,10 +38,12 @@ function clock(start = 10_000) {
 }
 
 describe('VideoTap', () => {
-  it('knows an IDR that carries SPS from one that does not', () => {
+  it('knows an IDR that carries SPS and PPS from one that lacks either', () => {
     expect(carriesParameterSets(IDR())).toBe(true)
     expect(carriesParameterSets(BARE_IDR())).toBe(false)
-    expect(carriesParameterSets(Buffer.from([0, 0, 1, 0x67, 1]))).toBe(true)
+    expect(carriesParameterSets(Buffer.from([0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 1]))).toBe(true)
+    expect(carriesParameterSets(Buffer.from([0, 0, 1, 0x67, 1, 0, 0, 1, 0x65, 1]))).toBe(false)
+    expect(carriesParameterSets(Buffer.from([0, 0, 1, 0x68, 1, 0, 0, 1, 0x65, 1]))).toBe(false)
   })
 
   it('starts a flow\'s video at the last decodable keyframe before it, and places the flow on its clock', () => {

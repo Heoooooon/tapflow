@@ -67,12 +67,21 @@ export interface VideoSink {
 
 interface Pending { at: number; kind: number; payload: Buffer; decodable: boolean }
 
-/** An IDR whose access unit carries an SPS (NAL type 7), i.e. one a decoder can start from cold. */
+/**
+ * An access unit carrying both an SPS (NAL type 7) and a PPS (type 8): one a decoder can start from cold. Both,
+ * because the player trusts this to seek and to resume after a gap, and either alone cannot configure a decoder.
+ */
 export function carriesParameterSets(payload: Buffer): boolean {
+  let sps = false
+  let pps = false
   for (let i = 0; i + 3 < payload.length; i++) {
     if (payload[i] !== 0 || payload[i + 1] !== 0) continue
     const at = payload[i + 2] === 1 ? i + 3 : payload[i + 2] === 0 && payload[i + 3] === 1 ? i + 4 : -1
-    if (at > 0 && at < payload.length && (payload[at]! & 0x1f) === 7) return true
+    if (at <= 0 || at >= payload.length) continue
+    const type = payload[at]! & 0x1f
+    if (type === 7) sps = true
+    else if (type === 8) pps = true
+    if (sps && pps) return true
   }
   return false
 }
