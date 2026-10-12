@@ -154,7 +154,10 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
   const register = ((name: string, config: unknown, cb: (...args: unknown[]) => unknown) =>
     server.registerTool(name, config as never, (async (...args: unknown[]) => {
       await client.reconnectIfRotated().catch(() => { /* the tool reports the closed socket itself */ })
-      const sessionId = (args[0] as { sessionId?: unknown } | undefined)?.sessionId
+      // Only a tool whose schema has a sessionId gets its input as the first argument; a schema-less one gets the
+      // SDK's request context there, whose own `sessionId` is a transport's, not a device's.
+      const takesSession = (config as { inputSchema?: Record<string, unknown> }).inputSchema?.['sessionId'] !== undefined
+      const sessionId = takesSession ? (args[0] as { sessionId?: unknown } | undefined)?.sessionId : undefined
       const note = name !== 'connect_device' && typeof sessionId === 'string' ? client.releasedByReconnect(sessionId) : undefined
       if (note) return err(`${name} failed: ${note}`)
       return cb(...args)

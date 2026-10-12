@@ -1,4 +1,4 @@
-import { fetchWithToken, resolveToken, tokenRefusal } from '@tapflowio/flow-runner'
+import { fetchWithToken, resolveToken, tokenRefusal, type TokenSource } from '@tapflowio/flow-runner'
 import { TapflowClient } from './client.js'
 
 /**
@@ -9,7 +9,13 @@ import { TapflowClient } from './client.js'
  */
 export async function startClient(env: NodeJS.ProcessEnv, stderr: (line: string) => void): Promise<TapflowClient | null> {
   const relayUrl = env['TAPFLOW_RELAY_URL'] ?? 'ws://localhost:4000'
-  const tokens = resolveToken({ relayUrl, env, warn: stderr })
+  let tokens: TokenSource
+  try {
+    tokens = resolveToken({ relayUrl, env, warn: stderr })
+  } catch (e) {
+    stderr(`TAPFLOW_RELAY_URL is not a relay URL (${JSON.stringify(relayUrl)}): ${(e as Error).message} — use e.g. ws://localhost:4000`)
+    return null
+  }
   const client = new TapflowClient(relayUrl, tokens)
 
   try {
@@ -26,8 +32,19 @@ export async function startClient(env: NodeJS.ProcessEnv, stderr: (line: string)
   try {
     await client.listDevices()
   } catch (e) {
+    // A refusal arrives as a close frame right after the upgrade; the request can fail on the closing socket before
+    // its close event says why. Read the code once it has.
+    await client.closeSettled()
+    // Only a 1008 is the relay refusing the credential. A slow relay (one waking from sleep) or another close is not
+    // the token's fault: started anyway, as before this check existed, and each tool says what it meets.
+    if (client.lastCloseCode !== 1008) {
+      stderr(`The relay at ${tokens.origin} did not answer the first request: ${(e as Error).message}; starting anyway`)
+      return client
+    }
     stderr(`The relay at ${tokens.origin} refused this connection: ${(e as Error).message}`)
-    stderr(tokens.token ? tokenRefusal(tokens) : `${tokenRefusal(tokens)} (the relay's own Mac needs none)`)
+    stderr(tokens.token
+      ? tokenRefusal(tokens)
+      : `${tokenRefusal(tokens)}. The relay counts only its own port on its own Mac as local, so a tunnel port or a container needs one too`)
     client.disconnect()
     return null
   }

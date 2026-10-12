@@ -350,6 +350,13 @@ describe('cmdFlowRun records the run on the relay (A3)', () => {
     expect(new Set(auths)).toEqual(new Set(['Bearer tflw_pat_file']))
   })
 
+  it('says a --relay that is not a URL is not one, and exits 2', async () => {
+    await cmdFlowRun([file], { token: 'tflw_pat_x', relay: '4000' })
+    expect(process.exitCode).toBe(2)
+    expect(errLines().some((l) => l.includes('--relay is not a relay URL ("4000")'))).toBe(true)
+    expect(mocks.connect).not.toHaveBeenCalled()
+  })
+
   it('names the relay, the token\'s source and the fix when the relay refuses it', async () => {
     fakeRelay(() => Response.json({ error: 'Unauthorized' }, { status: 401 }))
     mocks.runFlow.mockResolvedValue(resultOf('passed'))

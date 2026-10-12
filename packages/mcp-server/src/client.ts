@@ -403,6 +403,21 @@ export class TapflowClient {
     await this.reconnecting
   }
 
+  /** Resolves once a socket that is closing has closed, so `lastCloseCode` can be read — at most `ms`. */
+  async closeSettled(ms = 1_000): Promise<void> {
+    const ws = this.ws
+    if (!ws || ws.readyState === WebSocket.OPEN) return
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, ms)
+      ws.once('close', () => { clearTimeout(timer); resolve() })
+    })
+  }
+
+  /** How the relay last closed this client's socket, or null while it is open or was closed by this client. */
+  get lastCloseCode(): number | null {
+    return this.lastClose?.code ?? null
+  }
+
   /** Why a session this client held is not held any more, when a reconnect is the reason. */
   releasedByReconnect(sessionId: string): string | undefined {
     return this.released.has(sessionId)

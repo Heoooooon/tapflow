@@ -140,7 +140,9 @@ export async function fetchWithToken(
   const res = await fetchImpl(url, { ...init, headers: { ...init.headers, ...authHeader(source) } })
   if (res.status !== 401) return res
   source.refresh()
-  if (source.token === used) return res
+  // Unchanged, or empty — a file read mid-write by a person editing it reads as no token, and a retry without one
+  // can only be refused again. The next request reads the file afresh.
+  if (source.token === used || !source.token) return res
   await res.body?.cancel().catch(() => {})
   return fetchImpl(url, { ...init, headers: { ...init.headers, ...authHeader(source) } })
 }

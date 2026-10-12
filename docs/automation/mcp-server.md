@@ -103,7 +103,7 @@ Without `TAPFLOW_TOKEN`, the MCP server reads its token from a file. When the re
 
 - The file is `~/.config/tapflow/credentials.json`, or `tapflow/credentials.json` under `XDG_CONFIG_HOME` when that is set, or the path in `TAPFLOW_TOKEN_FILE`. It is in the home directory of the computer that runs the MCP server, not of the Mac the relay runs on.
 - Each relay has its own token, keyed by the relay address's origin; write `ws://` as `http://` and `wss://` as `https://`.
-- The file holds a token, so keep it at mode `600`, readable only by you. The MCP server warns when other users can read it.
+- The file holds a token, so keep it at mode `600`, readable only by you. The MCP server warns when other users can read it (not checked on Windows).
 
 ```json
 {
@@ -116,7 +116,7 @@ Without `TAPFLOW_TOKEN`, the MCP server reads its token from a file. When the re
 
 `TAPFLOW_TOKEN`, when set, wins over the file and is never replaced by it. To move a registered `TAPFLOW_TOKEN` into the file, remove it from the MCP registration.
 
-When a token is revoked, the relay closes the connection within 30 seconds. Write the new token to the file and the next tool call reconnects with it. The relay releases the sessions the old connection held, so call `connect_device` again.
+When a token is revoked, the relay closes the connection right away. Write the new token to the file and the next tool call reconnects with it. The relay releases the sessions the old connection held, so call `connect_device` again.
 
 Connected straight to the relay's port on the Mac it runs on, the MCP server starts and drives devices without a token. `screenshot`, `query_ui_tree` and `list_builds` still need one. When the relay refuses a token, the error says which relay refused it, where the token came from, and how to fix it.
 

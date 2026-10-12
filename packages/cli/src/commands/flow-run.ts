@@ -175,7 +175,12 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
     const relayUrl = opts.relay ?? 'ws://localhost:4000'
     // --token, then TAPFLOW_TOKEN, then the credentials file for this relay. One source for the connection, the
     // record and the video, so a run cannot connect with one token and record with another.
-    const tokens = resolveToken({ relayUrl, ...(opts.token !== undefined ? { explicit: opts.token } : {}), warn: (line) => console.error(line) })
+    let tokens: ReturnType<typeof resolveToken>
+    try {
+      tokens = resolveToken({ relayUrl, ...(opts.token !== undefined ? { explicit: opts.token } : {}), warn: (line) => console.error(line) })
+    } catch (e) {
+      envFail(`--relay is not a relay URL (${JSON.stringify(relayUrl)}): ${(e as Error).message} — use e.g. ws://localhost:4000`)
+    }
     client = new RelayClient(relayUrl, tokens)
     try {
       await client.connect()

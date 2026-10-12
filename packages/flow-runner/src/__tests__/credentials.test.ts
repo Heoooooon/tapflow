@@ -129,6 +129,15 @@ describe('fetchWithToken', () => {
     expect([a.status, b.status]).toEqual([200, 200])
   })
 
+  it('does not spend its retry on a file read mid-edit, which reads as no token', async () => {
+    write({ 'http://localhost:4000': 'tflw_pat_old' })
+    const source = resolveToken({ relayUrl: 'ws://localhost:4000', env: env() })
+    fs.writeFileSync(file, '{"version": 1, "rel')
+    const fetchMock = vi.fn(async () => answer(401))
+    await fetchWithToken(source, 'http://localhost:4000/x', {}, fetchMock as typeof fetch)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('leaves a 403 alone: a scope is not a stale token', async () => {
     write({ 'http://localhost:4000': 'tflw_pat_old' })
     const source = resolveToken({ relayUrl: 'ws://localhost:4000', env: env() })

@@ -16,7 +16,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 /** A relay: HTTP answers by `rest`, the socket answers `agents:list` and `session:start`, and every handshake's
  *  bearer is recorded. `refuseSocket` closes the socket 1008 right after the upgrade, as the relay does. */
-function relay(opts: { rest?: (auth: string | undefined) => number; refuseSocket?: (auth: string | undefined) => boolean } = {}) {
+function relay(opts: { rest?: (auth: string | undefined) => number; refuseSocket?: (auth: string | undefined) => boolean; closeCode?: number } = {}) {
   const auths: (string | undefined)[] = []
   const sockets: WebSocket[] = []
   const server = http.createServer((req, res) => {
@@ -27,7 +27,7 @@ function relay(opts: { rest?: (auth: string | undefined) => number; refuseSocket
   wss.on('connection', (ws, req) => {
     auths.push(req.headers.authorization)
     sockets.push(ws)
-    if (opts.refuseSocket?.(req.headers.authorization)) { ws.close(1008, 'Unauthorized'); return }
+    if (opts.refuseSocket?.(req.headers.authorization)) { ws.close(opts.closeCode ?? 1008, 'Unauthorized'); return }
     ws.on('message', (data) => {
       const msg = JSON.parse(String(data)) as Record<string, unknown>
       if (msg['type'] === 'agents:list') ws.send(JSON.stringify({ type: 'agents:listed', sessions: [] }))
@@ -110,6 +110,20 @@ describe('TapflowClient after the relay closes it for its token', () => {
     await r.close()
   })
 
+  it('does not read a schema-less tool\'s request context as a session', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => Promise<{ content: { text: string }[]; isError?: boolean }>>()
+    const server = { registerTool: (name: string, _c: unknown, cb: never) => { handlers.set(name, cb) } } as unknown as McpServer
+    const fake = {
+      reconnectIfRotated: vi.fn(async () => {}),
+      releasedByReconnect: () => 'released',
+      listDevices: vi.fn(async () => []),
+    } as unknown as TapflowClient
+    registerTools(server, fake)
+    // A transport with session ids puts its own `sessionId` in the context a schema-less tool receives first.
+    const result = await handlers.get('list_devices')!({ sessionId: 'transport-1', signal: new AbortController().signal })
+    expect(result.isError).toBeFalsy()
+  })
+
   it('answers a tool aimed at a released session with the reason, before it reaches the relay', async () => {
     const handlers = new Map<string, (...args: unknown[]) => Promise<{ content: { text: string }[]; isError?: boolean }>>()
     const server = { registerTool: (name: string, _c: unknown, cb: never) => { handlers.set(name, cb) } } as unknown as McpServer
@@ -129,6 +143,24 @@ describe('TapflowClient after the relay closes it for its token', () => {
 })
 
 describe('startClient', () => {
+  it('says the relay URL is not one, instead of crashing on it', async () => {
+    const lines: string[] = []
+    expect(await startClient({ TAPFLOW_RELAY_URL: '4000', TAPFLOW_TOKEN_FILE: file }, (l) => lines.push(l))).toBeNull()
+    expect(lines[0]).toMatch(/^TAPFLOW_RELAY_URL is not a relay URL \("4000"\)/)
+  })
+
+  it('starts anyway when the first request fails for a reason that is not the token', async () => {
+    // The relay goes away right after the upgrade, as one restarting would — not a 1008.
+    const r = await relay({ refuseSocket: () => true, closeCode: 1001 })
+    const lines: string[] = []
+    const client = await startClient({ TAPFLOW_RELAY_URL: `ws://localhost:${r.port}`, TAPFLOW_TOKEN: 'tflw_pat_x', TAPFLOW_TOKEN_FILE: file }, (l) => lines.push(l))
+    expect(client).not.toBeNull()
+    expect(lines.join('\n')).toContain('did not answer the first request')
+    expect(lines.join('\n')).not.toContain('did not accept the token')
+    client!.disconnect()
+    await r.close()
+  })
+
   it('without a token, exits when the relay refuses the socket, naming the relay and where to store one', async () => {
     const r = await relay({ refuseSocket: (auth) => auth === undefined })
     const lines: string[] = []
