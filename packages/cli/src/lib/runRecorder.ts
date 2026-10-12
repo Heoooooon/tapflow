@@ -1,3 +1,4 @@
+import { fetchWithToken, fixedToken, tokenRefusal, type TokenSource } from '@tapflowio/flow-runner'
 import type { CiContext } from './ci.js'
 
 /**
@@ -55,11 +56,14 @@ export class RunRecorder {
   /** The run's id once the relay has answered the create, or null if it never will — what the video lane waits on. */
   readonly created: Promise<string | null> = new Promise((resolve) => { this.resolveCreated = resolve })
 
+  private readonly tokens: TokenSource
+
   constructor(
     private readonly httpBase: string,
-    private readonly token: string,
+    token: string | TokenSource,
     private readonly deps: RunRecorderDeps,
   ) {
+    this.tokens = typeof token === 'string' ? fixedToken(token, httpBase) : token
     this.callTimeoutMs = deps.callTimeoutMs ?? CALL_TIMEOUT_MS
   }
 
@@ -169,20 +173,20 @@ export class RunRecorder {
   }
 
   private async post(path: string, body: string | Buffer, contentType: string): Promise<Response> {
-    const res = await this.deps.fetch(new URL(path, this.httpBase).toString(), {
+    const res = await fetchWithToken(this.tokens, new URL(path, this.httpBase).toString(), {
       method: 'POST',
-      headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': contentType },
+      headers: { 'Content-Type': contentType },
       body: typeof body === 'string' ? body : new Uint8Array(body),
       signal: AbortSignal.any([AbortSignal.timeout(this.callTimeoutMs), this.gaveUp.signal]),
-    })
-    if (!res.ok) throw new RecordRefused(await refusal(res))
+    }, this.deps.fetch)
+    if (!res.ok) throw new RecordRefused(await refusal(res, this.tokens))
     return res
   }
 }
 
-async function refusal(res: Response): Promise<string> {
+async function refusal(res: Response, tokens: TokenSource): Promise<string> {
   const detail = await res.json().then((b: { error?: unknown }) => (typeof b.error === 'string' ? b.error : ''), () => '')
-  if (res.status === 401) return 'the relay did not accept the token'
+  if (res.status === 401) return tokenRefusal(tokens)
   if (res.status === 403) return `the token may not record runs${detail ? ` (${detail})` : ''} — it needs builds:write, and a role that may write`
   return `the relay answered ${res.status}${detail ? ` (${detail})` : ''}`
 }

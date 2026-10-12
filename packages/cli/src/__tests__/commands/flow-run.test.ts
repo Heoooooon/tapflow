@@ -23,8 +23,10 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@tapflowio/flow-runner', async (importOriginal) => ({
-  // The real tap: these tests feed it frames and check what reaches the relay.
-  VideoTap: (await importOriginal<typeof import('@tapflowio/flow-runner')>()).VideoTap,
+  // The real tap and token resolution: these tests feed it frames and tokens and check what reaches the relay.
+  ...(({ VideoTap, resolveToken, tokenRefusal, fetchWithToken, fixedToken }) => ({ VideoTap, resolveToken, tokenRefusal, fetchWithToken, fixedToken }))(
+    await importOriginal<typeof import('@tapflowio/flow-runner')>(),
+  ),
   parseFlow: mocks.parseFlow,
   runFlow: mocks.runFlow,
   toJUnitXml: mocks.toJUnitXml,
@@ -45,6 +47,9 @@ vi.mock('@tapflowio/flow-runner', async (importOriginal) => ({
 }))
 
 import { cmdFlowRun } from '../../commands/flow-run.js'
+
+// A developer's own credentials file must never reach these runs: every test starts with none.
+beforeEach(() => { vi.stubEnv('TAPFLOW_TOKEN_FILE', path.join(os.tmpdir(), 'tapflow-no-such-credentials.json')) })
 import type { FlowResult, StreamListener } from '@tapflowio/flow-runner'
 import { CODEC_H264, writeEnvelopeHeader } from '@tapflowio/agent-core/utils'
 
@@ -331,6 +336,27 @@ describe('cmdFlowRun records the run on the relay (A3)', () => {
     await cmdFlowRun([file], { token: 'tflw_pat_x', record: false })
     expect(relay.fetchMock).not.toHaveBeenCalled()
     expect(errLines().some((l) => l.includes('not recorded'))).toBe(false)
+  })
+
+  it('records with the token from the credentials file when no flag or env gives one (T1)', async () => {
+    const credentials = path.join(dir, 'credentials.json')
+    fs.writeFileSync(credentials, JSON.stringify({ version: 1, relays: { 'http://localhost:4000': { token: 'tflw_pat_file' } } }), { mode: 0o600 })
+    vi.stubEnv('TAPFLOW_TOKEN_FILE', credentials)
+    fakeRelay()
+    mocks.runFlow.mockResolvedValue(resultOf('passed'))
+    await cmdFlowRun([file], {})
+    const auths = vi.mocked(globalThis.fetch).mock.calls.map(([, init]) => (init?.headers as Record<string, string>).Authorization)
+    expect(auths.length).toBeGreaterThan(0)
+    expect(new Set(auths)).toEqual(new Set(['Bearer tflw_pat_file']))
+  })
+
+  it('names the relay, the token\'s source and the fix when the relay refuses it', async () => {
+    fakeRelay(() => Response.json({ error: 'Unauthorized' }, { status: 401 }))
+    mocks.runFlow.mockResolvedValue(resultOf('passed'))
+    await cmdFlowRun([file], { token: 'tflw_pat_wrong', relay: 'wss://relay.example.test' })
+    expect(errLines().find((l) => l.startsWith('run not recorded'))).toMatch(
+      /^run not recorded: the relay at https:\/\/relay\.example\.test did not accept the token from --token .* under "https:\/\/relay\.example\.test"/,
+    )
   })
 
   it('says once that a run without a token is not recorded', async () => {

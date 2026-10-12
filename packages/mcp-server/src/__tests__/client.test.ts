@@ -897,7 +897,8 @@ describe('TapflowClient', () => {
       globalThis.fetch = async () =>
         new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
       try {
-        await expect(client.screenshot('sess-1')).rejects.toThrow('Unauthorized')
+        // Not the relay's bare "Unauthorized": the relay, where the token came from, and the fix.
+        await expect(client.screenshot('sess-1')).rejects.toThrow('the relay at http://localhost:')
       } finally {
         globalThis.fetch = origFetch
       }

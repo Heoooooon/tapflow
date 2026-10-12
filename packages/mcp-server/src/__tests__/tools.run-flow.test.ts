@@ -29,6 +29,8 @@ function fakeClient(calls: string[]): TapflowClient {
     typeText: vi.fn(async () => {}),
     pressKey: vi.fn(),
     openUrl: vi.fn(async () => {}),
+    reconnectIfRotated: vi.fn(async () => {}),
+    releasedByReconnect: vi.fn(() => undefined),
   } as unknown as TapflowClient
 }
 
