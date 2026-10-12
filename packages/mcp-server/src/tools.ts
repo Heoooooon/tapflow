@@ -149,7 +149,21 @@ function err(text: string): ToolResult {
 }
 
 export function registerTools(server: McpServer, client: TapflowClient): void {
-  server.registerTool(
+  // Every tool first gives a rotated token its one reconnect (`reconnectIfRotated`), and a tool aimed at a session
+  // the relay released because of it says so instead of failing for a reason it cannot name.
+  const register = ((name: string, config: unknown, cb: (...args: unknown[]) => unknown) =>
+    server.registerTool(name, config as never, (async (...args: unknown[]) => {
+      await client.reconnectIfRotated().catch(() => { /* the tool reports the closed socket itself */ })
+      // Only a tool whose schema has a sessionId gets its input as the first argument; a schema-less one gets the
+      // SDK's request context there, whose own `sessionId` is a transport's, not a device's.
+      const takesSession = (config as { inputSchema?: Record<string, unknown> }).inputSchema?.['sessionId'] !== undefined
+      const sessionId = takesSession ? (args[0] as { sessionId?: unknown } | undefined)?.sessionId : undefined
+      const note = name !== 'connect_device' && typeof sessionId === 'string' ? client.releasedByReconnect(sessionId) : undefined
+      if (note) return err(`${name} failed: ${note}`)
+      return cb(...args)
+    }) as never)) as McpServer['registerTool']
+
+  register(
     'list_builds',
     { description: 'List all apps and their builds available on the relay. Use this to find buildId before calling install_app or launch_app.' },
     async () => {
@@ -162,7 +176,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'list_devices',
     { description: 'List all available simulators and emulators registered on the tapflow relay.' },
     async () => {
@@ -175,7 +189,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'connect_device',
     {
       description: 'Join a device session so you can control it. Required before boot_device, install_app, and launch_app. ' +
@@ -195,7 +209,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'disconnect_device',
     {
       description: 'End a device session and release the connection.',
@@ -213,7 +227,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'boot_device',
     {
       description: 'Boot a simulator/emulator. Requires connect_device first. Waits up to 30 seconds for the device to be ready.',
@@ -232,7 +246,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'shutdown_device',
     {
       description:
@@ -254,7 +268,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'query_ui_tree',
     {
       description:
@@ -277,7 +291,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'run_flow',
     {
       description:
@@ -341,7 +355,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'screenshot',
     {
       description: 'Capture the current screen of a device. Returns the image so you can analyze it.',
@@ -388,7 +402,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'tap',
     {
       description: 'Tap at a pixel coordinate matching the screenshot. Use the width and height from the screenshot tool response.',
@@ -410,7 +424,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'swipe',
     {
       description: 'Swipe from one pixel coordinate to another. Use the width and height from the screenshot tool response.',
@@ -442,7 +456,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'type_text',
     {
       description:
@@ -463,7 +477,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'press_key',
     {
       description:
@@ -485,7 +499,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'press_button',
     {
       description:
@@ -507,7 +521,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'install_app',
     {
       description: 'Install an app on the device. Requires connect_device first. Waits up to 60 seconds.',
@@ -526,7 +540,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     },
   )
 
-  server.registerTool(
+  register(
     'launch_app',
     {
       description: 'Launch an installed app on the device. Requires connect_device first. Waits up to 15 seconds.',

@@ -43,6 +43,8 @@ function jpegBytes(width: number, height: number): Buffer {
 function clientReturning(buf: Buffer): TapflowClient {
   return {
     screenshot: vi.fn(async () => buf),
+    reconnectIfRotated: vi.fn(async () => {}),
+    releasedByReconnect: vi.fn(() => undefined),
   } as unknown as TapflowClient
 }
 

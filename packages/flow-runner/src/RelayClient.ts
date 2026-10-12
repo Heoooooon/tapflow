@@ -6,6 +6,7 @@ import { WebSocket } from 'ws'
 import type { UIElement } from '@tapflowio/agent-core'
 import { PlatformError } from '@tapflowio/agent-core'
 import { TransientQueryError } from './errors.js'
+import { authHeader, fetchWithToken, fixedToken, tokenRefusal, type TokenSource } from './credentials.js'
 
 // Carries the HTTP status so ui-tree queries can tell a transient failure (retry) from a permanent one.
 // status 0 marks a network-level failure (fetch rejected before a response).
@@ -372,14 +373,20 @@ export class RelayClient {
   /** Who is reading the stream this runner holds — the run's video (A4). None by default: frames are dropped. */
   private streamListener: StreamListener | null = null
 
+  /** Where the token comes from. A string is used as given; a `TokenSource` (`resolveToken`) is re-read on a 401. */
+  private readonly tokens: TokenSource
+
   constructor(
     private readonly relayUrl: string,
-    private readonly token: string,
-  ) {}
+    token: string | TokenSource,
+  ) {
+    this.tokens = typeof token === 'string' ? fixedToken(token, relayUrl) : token
+  }
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const headers = this.token ? { Authorization: `Bearer ${this.token}` } : undefined
+      const auth = authHeader(this.tokens)
+      const headers = auth.Authorization ? auth : undefined
       // One identity for the run — see `mcp-server`'s twin.
       const url = new URL(this.relayUrl)
       url.searchParams.set('client', this.clientId)
@@ -971,10 +978,7 @@ export class RelayClient {
   private async getJson<T>(path: string, what: string, signal?: AbortSignal): Promise<T> {
     let res: Response
     try {
-      res = await fetch(new URL(path, this.httpBase()).toString(), {
-        headers: this.token ? { Authorization: `Bearer ${this.token}` } : undefined,
-        signal,
-      })
+      res = await fetchWithToken(this.tokens, new URL(path, this.httpBase()).toString(), { ...(signal ? { signal } : {}) })
     } catch (e) {
       throw new RelayHttpError(`${what} failed: ${(e as Error).message}`, 0, { cause: e })
     }
@@ -985,6 +989,8 @@ export class RelayClient {
         const body = JSON.parse(text) as { error?: string }
         if (body.error) message = body.error
       } catch { /* keep raw text */ }
+      // "Unauthorized" names neither the relay nor the fix; this does, whichever step met it.
+      if (res.status === 401) message = `${what} failed: ${tokenRefusal(this.tokens)}`
       throw new RelayHttpError(message, res.status)
     }
     try {
@@ -1051,10 +1057,7 @@ export class RelayClient {
   async screenshot(sessionId: string, signal?: AbortSignal): Promise<Buffer> {
     let res: Response
     try {
-      res = await fetch(new URL(`/api/v1/sessions/${sessionId}/screenshot`, this.httpBase()).toString(), {
-        headers: this.token ? { Authorization: `Bearer ${this.token}` } : undefined,
-        signal,
-      })
+      res = await fetchWithToken(this.tokens, new URL(`/api/v1/sessions/${sessionId}/screenshot`, this.httpBase()).toString(), { ...(signal ? { signal } : {}) })
     } catch (e) {
       const failure = this.failed(sessionId, `screenshot failed: ${(e as Error).message}`)
       throw new RelayHttpError(failure.message, 0, { cause: e })
@@ -1062,7 +1065,7 @@ export class RelayClient {
     // Through `failed()` like every other session-scoped failure here. A screenshot is taken to explain a
     // step that already failed, so arriving with no cause is the worst moment for it.
     if (!res.ok) {
-      const failure = this.failed(sessionId, `screenshot failed: ${res.status}`)
+      const failure = this.failed(sessionId, res.status === 401 ? `screenshot failed: ${tokenRefusal(this.tokens)}` : `screenshot failed: ${res.status}`)
       throw new RelayHttpError(failure.message, res.status, { cause: failure })
     }
     return Buffer.from(await res.arrayBuffer())

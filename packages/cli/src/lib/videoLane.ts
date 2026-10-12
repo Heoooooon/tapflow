@@ -1,4 +1,4 @@
-import type { VideoChunk, VideoEndReason, VideoMeta, VideoSink } from '@tapflowio/flow-runner'
+import { fetchWithToken, fixedToken, tokenRefusal, type TokenSource, type VideoChunk, type VideoEndReason, type VideoMeta, type VideoSink } from '@tapflowio/flow-runner'
 
 /**
  * Sends each flow's video to the relay (`/api/v1/runs/:id/flows/:idx/video`), beside the run record (A4).
@@ -61,13 +61,16 @@ export class VideoLane {
   private readonly callTimeoutMs: number
   private readonly chunkTimeoutMs: number
 
+  private readonly tokens: TokenSource
+
   constructor(
     private readonly httpBase: string,
-    private readonly token: string,
+    token: string | TokenSource,
     /** Resolves to the run's id once the record has it, or null if the run was never created. */
     private readonly runId: Promise<string | null>,
     private readonly deps: VideoLaneDeps,
   ) {
+    this.tokens = typeof token === 'string' ? fixedToken(token, httpBase) : token
     this.callTimeoutMs = deps.callTimeoutMs ?? CALL_TIMEOUT_MS
     this.chunkTimeoutMs = deps.chunkTimeoutMs ?? CHUNK_TIMEOUT_MS
   }
@@ -139,7 +142,7 @@ export class VideoLane {
     if (item.kind === 'open') {
       const res = await this.post(`${base}/open`, JSON.stringify(item.meta), 'application/json', {}, this.callTimeoutMs)
       if (res.status === 409) { v.closed = true; return }
-      if (!res.ok) throw new LaneStop(await refusal(res))
+      if (!res.ok) throw new LaneStop(await refusal(res, this.tokens))
       // An older relay answers an unknown `/api/` POST with the dashboard's index.html and a 200.
       const body = await res.json().catch(() => null) as { ok?: unknown } | null
       if (body?.ok !== true) throw new LaneStop('video not recorded: this relay does not keep run videos yet (update it to keep them)')
@@ -150,7 +153,7 @@ export class VideoLane {
       if (v.closed) return
       const reason = v.tailLost && item.reason === 'done' ? 'truncated' : item.reason
       const res = await this.post(`${base}/end`, JSON.stringify({ lastSeq: item.lastSeq, reason }), 'application/json', {}, this.callTimeoutMs)
-      if (!res.ok && res.status !== 404 && res.status !== 409) throw new LaneStop(await refusal(res))
+      if (!res.ok && res.status !== 404 && res.status !== 409) throw new LaneStop(await refusal(res, this.tokens))
       return
     }
     const { chunk } = item
@@ -182,7 +185,7 @@ export class VideoLane {
         if (body?.reason === 'size-limit') { v.closed = true; return }
       }
       if (res?.status === 507) throw new LaneStop('video stopped: the relay\'s storage for videos is full')
-      if (res && (res.status === 401 || res.status === 403)) throw new LaneStop(await refusal(res))
+      if (res && (res.status === 401 || res.status === 403)) throw new LaneStop(await refusal(res, this.tokens))
       // A timeout, a 5xx, a chunk too large: this chunk is a gap. The one holding a failure's moment gets one more try.
       if (attempt === 0 && isTail()) continue
       if (isTail()) v.tailLost = true
@@ -204,18 +207,18 @@ export class VideoLane {
   }
 
   private async post(path: string, body: string | Buffer, contentType: string, headers: Record<string, string>, timeoutMs: number): Promise<Response> {
-    return this.deps.fetch(new URL(path, this.httpBase).toString(), {
+    return fetchWithToken(this.tokens, new URL(path, this.httpBase).toString(), {
       method: 'POST',
-      headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': contentType, ...headers },
+      headers: { 'Content-Type': contentType, ...headers },
       body: typeof body === 'string' ? body : new Uint8Array(body),
       signal: AbortSignal.any([AbortSignal.timeout(timeoutMs), this.gaveUp.signal]),
-    })
+    }, this.deps.fetch)
   }
 }
 
-async function refusal(res: Response): Promise<string> {
+async function refusal(res: Response, tokens: TokenSource): Promise<string> {
   const detail = await res.json().then((b: { error?: unknown }) => (typeof b.error === 'string' ? b.error : ''), () => '')
-  if (res.status === 401) return 'video not recorded: the relay did not accept the token'
+  if (res.status === 401) return `video not recorded: ${tokenRefusal(tokens)}`
   if (res.status === 403) return `video not recorded: the token may not record runs${detail ? ` (${detail})` : ''}`
   return `video stopped: the relay answered ${res.status}${detail ? ` (${detail})` : ''}`
 }

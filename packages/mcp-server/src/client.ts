@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type {
   BrowserToRelay, DeviceSummary, InputErrorReason, SessionTerminatedReason, UIElement,
 } from '@tapflowio/protocol'
-import { EnvironmentStepError, TransientQueryError } from '@tapflowio/flow-runner'
+import { EnvironmentStepError, TransientQueryError, authHeader, fetchWithToken, fixedToken, tokenRefusal, type TokenSource } from '@tapflowio/flow-runner'
 
 // Protocol owns the wire shape; this file used to declare an identical copy under a name the
 // relay uses for a *different* shape. Kept exported as `DeviceInfo` because that is this
@@ -367,15 +367,71 @@ export class TapflowClient {
     )
   }
 
+  /** Where the token comes from: a string is used as given; a `TokenSource` is re-read when the relay refuses it. */
+  readonly tokens: TokenSource
+  /** The token the current (or last) socket was opened with, so a rotation can be told from the same token again. */
+  private connectedWith: string | null = null
+  private reconnecting: Promise<void> | null = null
+  /** Sessions joined on this socket. */
+  private readonly held = new Set<string>()
+  /** Sessions held on a socket a reconnect replaced: the relay released them when that socket closed. */
+  private readonly released = new Set<string>()
+
   constructor(
     private readonly relayUrl: string,
-    readonly token: string,
-  ) {}
+    token: string | TokenSource,
+  ) {
+    this.tokens = typeof token === 'string' ? fixedToken(token, relayUrl) : token
+  }
+
+  /**
+   * After the relay closed this socket for its credential (1008 — a revoked or expired token is closed within the
+   * heartbeat), re-read the token and reconnect once **if it changed**. Checked on the next tool call rather than at
+   * the close, because a rotation is "the relay closes, then the person writes the file": at close time the file
+   * still holds the old one. The relay releases a browser-role socket's sessions at once — there is no reconnect
+   * grace for them — so they are not re-joined silently; a tool on one says to call connect_device again.
+   */
+  async reconnectIfRotated(): Promise<void> {
+    if (this.ws || this.lastClose?.code !== 1008) return
+    this.reconnecting ??= (async () => {
+      this.tokens.refresh()
+      if (this.tokens.token === this.connectedWith) return
+      await this.connect()
+      for (const id of this.held) this.released.add(id)
+      this.held.clear()
+    })().finally(() => { this.reconnecting = null })
+    await this.reconnecting
+  }
+
+  /** Resolves once a socket that is closing has closed, so `lastCloseCode` can be read — at most `ms`. */
+  async closeSettled(ms = 1_000): Promise<void> {
+    const ws = this.ws
+    if (!ws || ws.readyState === WebSocket.OPEN) return
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, ms)
+      ws.once('close', () => { clearTimeout(timer); resolve() })
+    })
+  }
+
+  /** How the relay last closed this client's socket, or null while it is open or was closed by this client. */
+  get lastCloseCode(): number | null {
+    return this.lastClose?.code ?? null
+  }
+
+  /** Why a session this client held is not held any more, when a reconnect is the reason. */
+  releasedByReconnect(sessionId: string): string | undefined {
+    return this.released.has(sessionId)
+      ? `reconnected to the relay with the new token, and the relay released session ${sessionId} when the old connection closed — call connect_device again`
+      : undefined
+  }
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      // No token needed on localhost; from anywhere else the relay closes the socket (1008) unless the token has `view`.
-      const headers = this.token ? { Authorization: `Bearer ${this.token}` } : undefined
+      // No token needed for the socket on the relay's own loopback port; anywhere else the relay closes it (1008)
+      // unless the token has `view`. REST needs the token everywhere, loopback included.
+      const auth = authHeader(this.tokens)
+      const headers = auth.Authorization ? auth : undefined
+      this.connectedWith = this.tokens.token
       // One identity for the process, so a reconnect re-joins its own sessions rather than contending
       // with the socket it is replacing. The relay mints one per connection when this is absent, which is
       // the same behaviour a socket had before ownership moved off it.
@@ -676,6 +732,10 @@ export class TapflowClient {
       5_000,
       sessionId,
     )
+    if (msg['type'] !== 'error') {
+      this.held.add(sessionId)
+      this.released.delete(sessionId)
+    }
     if (msg['type'] === 'error') {
       // **The reason, not just the prose** — the same shape `typeText` uses below, and for the same reason:
       // `SessionStartFailure` is closed and says what to do, while `message` is the relay's wording. A
@@ -728,6 +788,8 @@ export class TapflowClient {
    */
   disconnectDevice(sessionId: string): void {
     this.send({ type: 'session:leave', sessionId })
+    this.held.delete(sessionId)
+    this.released.delete(sessionId)
     this.settleSessionWaiters(sessionId, () => new SessionLeftError(
       `This client left session ${sessionId} while the request was in flight. Whether it reached the ` +
       'device is unknown, so check device state rather than assuming it did nothing, and do not repeat ' +
@@ -1071,10 +1133,7 @@ export class TapflowClient {
     const httpBase = this.relayUrl.replace(/^wss?/, (p) => (p === 'wss' ? 'https' : 'http'))
     const url = new URL(`/api/v1/sessions/${sessionId}/screenshot`, httpBase)
     if (format === 'jpeg') url.searchParams.set('format', 'jpeg')
-    const res = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${this.token}` },
-      signal,
-    })
+    const res = await fetchWithToken(this.tokens, url.toString(), { ...(signal ? { signal } : {}) })
     if (!res.ok) {
       // Read text first — res.json() consumes the body, so a later res.text()
       // fallback can never run after a failed JSON parse.
@@ -1084,6 +1143,8 @@ export class TapflowClient {
         const body = JSON.parse(text) as { error?: string }
         if (body.error) message = body.error
       } catch { /* keep the raw text */ }
+      // "Unauthorized" names neither the relay nor the fix.
+      if (res.status === 401) message = tokenRefusal(this.tokens)
       throw this.failed(sessionId, message)
     }
     return Buffer.from(await res.arrayBuffer())
@@ -1094,10 +1155,7 @@ export class TapflowClient {
     const url = new URL(`/api/v1/sessions/${sessionId}/ui-tree`, httpBase)
     let res: Response
     try {
-      res = await fetch(url.toString(), {
-        headers: { Authorization: `Bearer ${this.token}` },
-        signal,
-      })
+      res = await fetchWithToken(this.tokens, url.toString(), { ...(signal ? { signal } : {}) })
     } catch (e) {
       const session = this.lifecycle.get(sessionId)
       if (session?.terminated || session?.needsReboot) {
@@ -1115,6 +1173,7 @@ export class TapflowClient {
         const body = JSON.parse(text) as { error?: string }
         if (body.error) message = body.error
       } catch { /* keep the raw text */ }
+      if (res.status === 401) message = tokenRefusal(this.tokens)
       const cause = this.failed(sessionId, message)
       const session = this.lifecycle.get(sessionId)
       if (session?.terminated || session?.needsReboot || PERMANENT_QUERY_STATUSES.has(res.status)) {
@@ -1138,10 +1197,12 @@ export class TapflowClient {
 
   async listBuilds(): Promise<AppInfo[]> {
     const httpBase = this.relayUrl.replace(/^wss?/, (p) => (p === 'wss' ? 'https' : 'http'))
-    const headers = { Authorization: `Bearer ${this.token}` }
+    const get = (url: string) => fetchWithToken(this.tokens, url, {})
+    const refused = (what: string, status: number) =>
+      new Error(status === 401 ? `Failed to fetch ${what}: ${tokenRefusal(this.tokens)}` : `Failed to fetch ${what}: ${status}`)
 
-    const appsRes = await fetch(new URL('/api/v1/apps', httpBase).toString(), { headers })
-    if (!appsRes.ok) throw new Error(`Failed to fetch apps: ${appsRes.status}`)
+    const appsRes = await get(new URL('/api/v1/apps', httpBase).toString())
+    if (!appsRes.ok) throw refused('apps', appsRes.status)
     // GET /apps → { items } (unpaginated); the bundle id column is bundle_id_key.
     const apps = ((await appsRes.json()) as { items?: Array<{ id: number; name: string; bundle_id_key: string; platform: string }> }).items ?? []
 
@@ -1161,8 +1222,8 @@ export class TapflowClient {
       const url = new URL('/api/v1/builds', httpBase)
       url.searchParams.set('limit', '100')
       url.searchParams.set('page', String(page))
-      const res = await fetch(url.toString(), { headers })
-      if (!res.ok) throw new Error(`Failed to fetch builds: ${res.status}`)
+      const res = await get(url.toString())
+      if (!res.ok) throw refused('builds', res.status)
       const body = (await res.json()) as { items?: RawBuild[]; total?: number }
       const items = body.items ?? []
       builds.push(...items)

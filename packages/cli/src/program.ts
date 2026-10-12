@@ -109,7 +109,7 @@ export function createCli(): CAC {
   cli
     .command('flow <subcommand> [...files]', 'Deterministic flow commands (subcommand: run)')
     .option('--relay <url>', 'Relay URL (default: ws://localhost:4000)')
-    .option('--token <token>', 'PAT for a remote relay (or TAPFLOW_TOKEN env)')
+    .option('--token <token>', 'PAT for a remote relay (or TAPFLOW_TOKEN env, or ~/.config/tapflow/credentials.json)')
     .option('--session <id>', "Target session id, for when --device matches more than one device (the MCP server's list_devices shows it)")
     .option('--device <name>', 'Target device by name (boots it when shut down)')
     .option('--build <id>', 'Build under test — installed before the run, launched by the launchApp step')

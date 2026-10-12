@@ -94,7 +94,31 @@ MCP를 지원하는 클라이언트라면 모두 tapflow를 사용할 수 있습
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `TAPFLOW_RELAY_URL` | 릴레이 WebSocket URL | `ws://localhost:4000` |
-| `TAPFLOW_TOKEN` | **API** 유형 PAT(`view, builds:write`). **Settings → Tokens**에서 발급합니다 | (필수) |
+| `TAPFLOW_TOKEN` | **API** 유형 PAT(`view, builds:write`). **Settings → Tokens**에서 발급합니다. 비워 두면 [토큰 파일](#token-file)에서 읽습니다 | (없음) |
+| `TAPFLOW_TOKEN_FILE` | 토큰 파일 경로 | `~/.config/tapflow/credentials.json` |
+
+## 토큰을 파일에 두기 {#token-file}
+
+`TAPFLOW_TOKEN`을 주지 않으면 MCP 서버는 토큰을 파일에서 읽습니다. 릴레이가 토큰을 거부하면 파일을 다시 읽어 한 번 더 시도하므로 토큰을 바꿀 때 MCP 서버를 다시 등록하거나 재시작하지 않아도 됩니다.
+
+- 파일은 `~/.config/tapflow/credentials.json`에 둡니다. `XDG_CONFIG_HOME`이 있으면 그 아래 `tapflow/credentials.json`을 쓰고 `TAPFLOW_TOKEN_FILE`이 있으면 그 경로를 씁니다. MCP 서버를 실행하는 컴퓨터의 홈 디렉터리이고 릴레이가 도는 Mac의 홈 디렉터리가 아닙니다.
+- 토큰은 릴레이마다 따로 둡니다. 키는 릴레이 주소의 origin이고 `ws://`는 `http://`로, `wss://`는 `https://`로 적습니다.
+- 파일에 토큰이 들어 있으므로 권한을 `600`으로 두어 본인만 읽게 합니다. 다른 사용자가 읽을 수 있으면 MCP 서버가 경고합니다(Windows에서는 확인하지 않습니다).
+
+```json
+{
+  "version": 1,
+  "relays": {
+    "http://localhost:4000": { "token": "tflw_pat_your_token_here" }
+  }
+}
+```
+
+`TAPFLOW_TOKEN`이 있으면 그 값이 파일보다 우선하고 파일을 다시 읽어도 바뀌지 않습니다. 등록할 때 넣은 `TAPFLOW_TOKEN`을 파일로 옮기려면 MCP 등록에서 그 값을 지우세요.
+
+토큰을 폐기하면 릴레이가 바로 연결을 닫습니다. 새 토큰을 파일에 쓰면 다음 도구 호출에서 새 토큰으로 다시 연결합니다. 이때 릴레이는 이전 연결이 잡고 있던 세션을 놓아주므로 `connect_device`를 다시 불러야 합니다.
+
+릴레이가 도는 Mac에서 릴레이 포트로 바로 접속하면 토큰 없이도 MCP 서버가 시작하고 기기를 조작할 수 있습니다. `screenshot`, `query_ui_tree`, `list_builds`는 이때도 토큰이 필요합니다. 릴레이가 토큰을 거부하면 어느 릴레이가 어디서 온 토큰을 거부했는지와 고치는 방법을 알려 줍니다.
 
 ## 사용 가능한 도구
 

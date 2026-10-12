@@ -7,6 +7,8 @@ import {
   RelayClient,
   RelayDriver,
   VideoTap,
+  resolveToken,
+  tokenRefusal,
   type Flow,
   type FlowResult,
   type DeviceInfo,
@@ -171,8 +173,15 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
     }
 
     const relayUrl = opts.relay ?? 'ws://localhost:4000'
-    const token = opts.token ?? process.env.TAPFLOW_TOKEN ?? ''
-    client = new RelayClient(relayUrl, token)
+    // --token, then TAPFLOW_TOKEN, then the credentials file for this relay. One source for the connection, the
+    // record and the video, so a run cannot connect with one token and record with another.
+    let tokens: ReturnType<typeof resolveToken>
+    try {
+      tokens = resolveToken({ relayUrl, ...(opts.token !== undefined ? { explicit: opts.token } : {}), warn: (line) => console.error(line) })
+    } catch (e) {
+      envFail(`--relay is not a relay URL (${JSON.stringify(relayUrl)}): ${(e as Error).message} — use e.g. ws://localhost:4000`)
+    }
+    client = new RelayClient(relayUrl, tokens)
     try {
       await client.connect()
     } catch (e) {
@@ -183,11 +192,11 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
     // the failures the runs page exists to tell apart from a regression.
     if (opts.record === false) {
       // Asked for: nothing to say.
-    } else if (!token) {
+    } else if (!tokens.token) {
       // REST has no loopback exemption, so without a token there is nothing to record with.
-      console.error('run not recorded: no token (pass --token or set TAPFLOW_TOKEN to record runs on the relay)')
+      console.error(`run not recorded: ${tokenRefusal(tokens)}, or pass --token`)
     } else {
-      recorder = new RunRecorder(httpBaseOf(relayUrl), token, {
+      recorder = new RunRecorder(httpBaseOf(relayUrl), tokens, {
         fetch: globalThis.fetch,
         warn: (line) => console.error(line),
       })
@@ -199,7 +208,7 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
       })
       video = {
         tap: new VideoTap(),
-        lane: new VideoLane(httpBaseOf(relayUrl), token, recorder.created, { fetch: globalThis.fetch, warn: (line) => console.error(line) }),
+        lane: new VideoLane(httpBaseOf(relayUrl), tokens, recorder.created, { fetch: globalThis.fetch, warn: (line) => console.error(line) }),
       }
       client.setStreamListener(video.tap)
     }
