@@ -25,6 +25,13 @@ export interface Decoder {
   decode(data: ArrayBuffer): void
   /** Release all decoder resources. */
   close(): void
+  /**
+   * Present every frame already fed, now. A decoder may hold its last output until more input arrives; a replay
+   * that seeks while paused has no more input to give. After it the next frame must be a keyframe (WebCodecs
+   * requires one after a flush). Optional: a decoder that presents each frame as it is fed has nothing to flush.
+   * The live stream never calls it.
+   */
+  flush?(): void
   /** Live media element to mount: <canvas> (WebCodecs) or <video> (MSE). Valid as a drawImage source. */
   readonly surface: HTMLCanvasElement | HTMLVideoElement
   /** Latest decoded frame size; null until the first frame. */

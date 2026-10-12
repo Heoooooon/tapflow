@@ -102,18 +102,25 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1)
   /** Playback position and the next record to deliver; refs, because the animation loop reads them every frame. */
   const clock = useRef({ ms: start, next: 0 })
-  const pendingSeek = useRef<number | null>(start)
+  /** A seek waiting for the remount. `flush`: present the target now — right for a still picture, and wrong while
+   *  playing, since after a flush the decoder accepts only a keyframe and playback continues with the frames after. */
+  const pendingSeek = useRef<{ ms: number; flush: boolean } | null>({ ms: start, flush: true })
 
   // In useCallback because both effects below depend on them.
-  const deliver = useCallback((upTo: number) => {
+  const deliver = useCallback((upTo: number, flushLast = false) => {
     const records = video.records
     let i = clock.current.next
+    let last = -1
+    for (let j = i; j < records.length && records[j]!.ms <= upTo; j++) if (records[j]!.kind === 'frame') last = j
     while (i < records.length && records[i]!.ms <= upTo) {
       const r = records[i]!
       if (r.kind === 'frame') {
         const env = parseEnvelopeHeader(r.data)
         if (env?.codec !== CODEC_AUDIO) {
-          handlerRef.current?.(env ? r.data.slice(HEADER_SIZE) : r.data, env ? { codec: env.codec, keyframe: env.keyframe, capturedAt: env.capturedAt } : undefined)
+          handlerRef.current?.(
+            env ? r.data.slice(HEADER_SIZE) : r.data,
+            env ? { codec: env.codec, keyframe: env.keyframe, capturedAt: env.capturedAt, flush: flushLast && i === last } : undefined,
+          )
         }
       }
       i++
@@ -121,9 +128,9 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
     clock.current.next = i
   }, [video])
 
-  const seek = useCallback((ms: number) => {
-    pendingSeek.current = Math.max(0, Math.min(ms, video.durationMs))
-    setShownMs(pendingSeek.current)
+  const seek = useCallback((ms: number, flush: boolean) => {
+    pendingSeek.current = { ms: Math.max(0, Math.min(ms, video.durationMs)), flush }
+    setShownMs(pendingSeek.current.ms)
     setEpoch((e) => e + 1)
   }, [video])
 
@@ -133,9 +140,9 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
     const target = pendingSeek.current
     if (target === null) return
     pendingSeek.current = null
-    const from = seekChunk(video, target)
-    clock.current = { ms: target, next: from >= 0 ? video.chunkStarts[from]! : video.records.length }
-    deliver(target)
+    const from = seekChunk(video, target.ms)
+    clock.current = { ms: target.ms, next: from >= 0 ? video.chunkStarts[from]! : video.records.length }
+    deliver(target.ms, target.flush)
   }, [epoch, video, deliver])
 
   useEffect(() => {
@@ -151,7 +158,7 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
       const next = video.records[clock.current.next]
       if (next && next.ms <= target && clock.current.next === video.chunkStarts[next.chunk]
         && startsAfterGap(video, next.chunk) && clock.current.ms < video.chunks[next.chunk]!.startMs) {
-        seek(video.chunks[next.chunk]!.startMs)
+        seek(video.chunks[next.chunk]!.startMs, false)
         return
       }
       clock.current.ms = Math.min(target, video.durationMs)
@@ -160,7 +167,12 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
         lastUi = now
         setShownMs(clock.current.ms)
       }
-      if (clock.current.ms >= video.durationMs) { setPlaying(false); return }
+      if (clock.current.ms >= video.durationMs) {
+        // Stopped on the last frame: shown by the same path as a paused seek, so it is the last one and not the one before.
+        setPlaying(false)
+        seek(video.durationMs, true)
+        return
+      }
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
@@ -168,8 +180,10 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
   }, [playing, speed, video, deliver, seek, epoch])
 
   const toggle = () => {
-    if (!playing && clock.current.ms >= video.durationMs) seek(start)
-    setPlaying((p) => !p)
+    if (playing) { setPlaying(false); return }
+    // A paused picture was flushed, and a flushed decoder takes only a keyframe next: play starts from a fresh feed.
+    seek(clock.current.ms >= video.durationMs ? start : clock.current.ms, false)
+    setPlaying(true)
   }
 
   const chrome = chromeAt(video, shownMs) as ChromePayload | null
@@ -186,6 +200,7 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
           deviceReady
           platform={video.meta.platform ?? 'ios'}
           binaryFrameHandlerRef={handlerRef}
+          replay
         />
       </div>
       <div className="flex max-w-xl flex-col gap-1.5">
@@ -196,7 +211,7 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
             max={Math.max(1, video.durationMs)}
             step={50}
             value={shownMs}
-            onChange={(e) => seek(Number(e.target.value))}
+            onChange={(e) => seek(Number(e.target.value), !playing)}
             aria-label={`Position in the video of ${flowName}`}
             aria-valuetext={`${formatClock(shownMs)} of ${formatClock(video.durationMs)}`}
             className="absolute inset-0 w-full accent-primary"
@@ -230,7 +245,7 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
         <ol className="flex flex-wrap gap-x-3 gap-y-1 text-xs" aria-label={`Steps in the video of ${flowName}`}>
           {video.steps.map((s) => (
             <li key={s.index}>
-              <button type="button" onClick={() => seek(s.ms)} className={`underline-offset-2 hover:underline ${s.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>
+              <button type="button" onClick={() => seek(s.ms, !playing)} className={`underline-offset-2 hover:underline ${s.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>
                 {formatClock(s.ms)} {s.name}
               </button>
             </li>

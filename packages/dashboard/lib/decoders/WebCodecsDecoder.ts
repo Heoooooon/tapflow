@@ -48,6 +48,8 @@ export class WebCodecsDecoder implements Decoder {
 
   decode(data: ArrayBuffer): void { this.core.decode(data) }
 
+  flush(): void { this.core.flush() }
+
   close(): void {
     this.core.close()
     this.renderer.dispose()

@@ -2,6 +2,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { RunVideo } from '@/components/runs/RunVideo'
+import { WatchedDevice } from '@/components/device/WatchedDevice'
+import { framelessChrome } from '@/lib/framelessChrome'
 import { chromeAt, loadVideo, parseRecords, seekChunk, videoEndNote, videoUnavailableText, type VideoIndex, type VideoSummary } from '@/lib/runVideo'
 import { withQuery } from './withQuery'
 
@@ -141,5 +143,16 @@ describe('RunVideo', () => {
     fail = false
     await userEvent.click(screen.getByRole('button', { name: /Play the video/ }))
     await waitFor(() => expect(screen.getByRole('status').textContent).toContain('cannot play'))
+  })
+})
+
+describe('WatchedDevice in a replay', () => {
+  it('never says it is waiting for a frame: a paused replay has none coming', () => {
+    const ref = { current: undefined }
+    const chrome = framelessChrome({ width: 400, height: 800 })
+    const { container, rerender } = render(<WatchedDevice chrome={chrome} deviceReady platform="ios" binaryFrameHandlerRef={ref} />)
+    expect(container.querySelector('[data-testid="screen-waiting"]')).toBeTruthy()
+    rerender(<WatchedDevice chrome={chrome} deviceReady platform="ios" binaryFrameHandlerRef={ref} replay />)
+    expect(container.querySelector('[data-testid="screen-waiting"]')).toBeNull()
   })
 })
