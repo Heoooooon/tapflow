@@ -3,10 +3,13 @@ import { useQuery } from '@tanstack/react-query'
 import { Pause, Play, Video } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { TechLabel } from '@/components/ui/tech-label'
+import { Slider } from '@/components/ui/slider'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { WatchedDevice } from '@/components/device/WatchedDevice'
 import { parseEnvelopeHeader, CODEC_AUDIO, HEADER_SIZE, type BinaryFrameHandler } from '@/lib/envelope'
 import {
-  chromeAt, formatClock, loadVideo, seekChunk, videoEndNote, videoUnavailableText,
+  chromeAt, formatClock, loadVideo, seekChunk, snapToStep, videoEndNote, videoUnavailableText,
   type LoadedVideo, type VideoIndex, type VideoSummary,
 } from '@/lib/runVideo'
 import { getRunVideo, queryKeys } from '@/lib/queries'
@@ -105,6 +108,8 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
   /** A seek waiting for the remount. `flush`: present the target now — right for a still picture, and wrong while
    *  playing, since after a flush the decoder accepts only a keyframe and playback continues with the frames after. */
   const pendingSeek = useRef<{ ms: number; flush: boolean } | null>({ ms: start, flush: true })
+  /** A pointer is on the seek bar: what lets a drag catch on a step, and the arrow keys not. */
+  const dragging = useRef(false)
 
   // In useCallback because both effects below depend on them.
   const deliver = useCallback((upTo: number, flushLast = false) => {
@@ -187,9 +192,11 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
   }
 
   const chrome = chromeAt(video, shownMs) as ChromePayload | null
-  const failedStep = video.steps.find((s) => s.status === 'failed')
   const pct = (ms: number) => `${video.durationMs > 0 ? (ms / video.durationMs) * 100 : 0}%`
   const endNote = videoEndNote(index.endReason)
+  // Dragging catches on a step's start. Pointer only: with the arrow keys a catch would hold the thumb on the step
+  // and never let it past.
+  const snap = (ms: number) => (dragging.current ? snapToStep(video, ms) : ms)
 
   return (
     <div className="flex flex-col gap-3">
@@ -203,61 +210,70 @@ function Player({ video, index, flowName, running }: { video: LoadedVideo; index
           replay
         />
       </div>
-      <div className="flex max-w-xl flex-col gap-1.5">
-        <div className="relative h-5">
-          <input
-            type="range"
-            min={0}
-            max={Math.max(1, video.durationMs)}
-            step={50}
-            value={shownMs}
-            onChange={(e) => seek(Number(e.target.value), !playing)}
-            aria-label={`Position in the video of ${flowName}`}
-            aria-valuetext={`${formatClock(shownMs)} of ${formatClock(video.durationMs)}`}
-            className="absolute inset-0 w-full accent-primary"
-          />
-          {/* Marks under the thumb: where each step started, where the flow started, the failure, and what is missing. */}
-          <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-1.5">
+      <div className="flex max-w-xl flex-col gap-2">
+        {/* Marks above the bar: a dot where each step starts (red where it failed), a bar where frames never reached
+            the relay. Hover or focus says which; a click goes there. Inset by the thumb's radius, so a mark sits over
+            the thumb's centre at that time — Radix keeps the thumb inside the track. */}
+        <TooltipProvider delayDuration={150}>
+          <div className="relative mx-2.5 h-2">
             {video.gaps.map((g, i) => (
-              <span key={`g${i}`} className="absolute h-full bg-muted-foreground/40" style={{ left: pct(g.fromMs), width: `max(2px, calc(${pct(g.toMs)} - ${pct(g.fromMs)}))` }} />
+              <Tooltip key={`g${i}`}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={`${formatClock(g.fromMs)} to ${formatClock(g.toMs)}: did not reach the relay`}
+                    onClick={() => seek(g.toMs, !playing)}
+                    className="absolute top-0 h-2 rounded-full bg-muted-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    style={{ left: pct(g.fromMs), width: `max(8px, calc(${pct(g.toMs)} - ${pct(g.fromMs)}))` }}
+                  />
+                </TooltipTrigger>
+                <TooltipContent>{formatClock(g.fromMs)}–{formatClock(g.toMs)} · did not reach the relay</TooltipContent>
+              </Tooltip>
             ))}
-            {video.steps.map((s) => (
-              <span key={`s${s.index}`} title={s.name} className={`absolute h-full w-0.5 ${s.status === 'failed' ? 'bg-destructive' : 'bg-foreground/50'}`} style={{ left: pct(s.ms) }} />
+            {video.steps.map((st) => (
+              <Tooltip key={`s${st.index}`}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={`${formatClock(st.ms)} ${st.name}${st.status === 'failed' ? ', failed' : ''}`}
+                    onClick={() => seek(st.ms, !playing)}
+                    className={`absolute top-0 h-2 w-2 -translate-x-1/2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${st.status === 'failed' ? 'bg-destructive' : 'bg-muted-foreground'}`}
+                    style={{ left: pct(st.ms) }}
+                  />
+                </TooltipTrigger>
+                <TooltipContent>
+                  {formatClock(st.ms)} · {st.name}{st.status === 'failed' && <span className="font-medium"> · failed</span>}
+                </TooltipContent>
+              </Tooltip>
             ))}
           </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+        </TooltipProvider>
+        <Slider
+          min={0}
+          max={Math.max(1, video.durationMs)}
+          step={50}
+          value={[shownMs]}
+          onPointerDown={() => { dragging.current = true }}
+          onValueChange={([v]) => seek(snap(v ?? 0), !playing)}
+          onValueCommit={() => { dragging.current = false }}
+          aria-label={`Position in the video of ${flowName}`}
+          aria-valuetext={`${formatClock(shownMs)} of ${formatClock(video.durationMs)}`}
+        />
+        <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}>
             {playing ? <Pause className="h-3.5 w-3.5" aria-hidden /> : <Play className="h-3.5 w-3.5" aria-hidden />}
           </Button>
           <TechLabel className="text-muted-foreground">{formatClock(shownMs)} / {formatClock(video.durationMs)}</TechLabel>
-          <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-            Speed
-            <select
-              value={speed}
-              onChange={(e) => setSpeed(Number(e.target.value) as (typeof SPEEDS)[number])}
-              className="rounded-md border bg-background px-1.5 py-0.5 text-xs text-foreground"
-            >
-              {SPEEDS.map((s) => <option key={s} value={s}>{s}×</option>)}
-            </select>
-          </label>
+          <Select value={String(speed)} onValueChange={(v) => setSpeed(Number(v) as (typeof SPEEDS)[number])}>
+            <SelectTrigger aria-label="Playback speed" className="ml-auto h-8 w-20 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {SPEEDS.map((sp) => <SelectItem key={sp} value={String(sp)}>{sp}×</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
-        <ol className="flex flex-wrap gap-x-3 gap-y-1 text-xs" aria-label={`Steps in the video of ${flowName}`}>
-          {video.steps.map((s) => (
-            <li key={s.index}>
-              <button type="button" onClick={() => seek(s.ms, !playing)} className={`underline-offset-2 hover:underline ${s.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>
-                {formatClock(s.ms)} {s.name}
-              </button>
-            </li>
-          ))}
-        </ol>
-        {(failedStep || video.gaps.length > 0 || endNote || running) && (
+        {(endNote || (running && !index.ended)) && (
           <p className="text-xs text-muted-foreground">
-            {[
-              video.gaps.length > 0 ? 'Grey stretches did not reach the relay.' : null,
-              endNote,
-              running && !index.ended ? 'Still recording: reload the video for the rest.' : null,
-            ].filter(Boolean).join(' ')}
+            {[endNote, running && !index.ended ? 'Still recording: reload the video for the rest.' : null].filter(Boolean).join(' ')}
           </p>
         )}
       </div>

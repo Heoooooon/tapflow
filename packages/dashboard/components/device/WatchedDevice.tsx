@@ -38,7 +38,8 @@ export function WatchedDevice({ chrome, deviceReady, platform, formFactor, binar
   const sentIos = chrome !== null && 'framePng' in chrome ? (chrome as ChromeData) : null;
   const android = chrome !== null && !('framePng' in chrome) ? (chrome as AndroidChrome) : null;
   const ios = sentIos ?? (deviceReady && platform === 'ios' && !android
-    ? framelessChrome(streamSize ?? skeletonSize(formFactor, platform))
+    // A replay with no recorded chrome draws the picture square-cornered: the rounding is a guess, not the device's.
+    ? framelessChrome(streamSize ?? skeletonSize(formFactor, platform), replay ? 0 : undefined)
     : null);
 
   if (ios) {

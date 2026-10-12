@@ -156,6 +156,20 @@ export function chromeAt(video: LoadedVideo, t: number): unknown {
   return latest ?? null
 }
 
+/**
+ * Where a drag at `ms` lands: on the nearest step's start when one is within 2% of the video (at least 150 ms),
+ * else where it is. The scene a step changed is the one worth landing on.
+ */
+export function snapToStep(video: Pick<LoadedVideo, 'steps' | 'durationMs'>, ms: number): number {
+  const within = Math.max(150, video.durationMs * 0.02)
+  let best: { ms: number; d: number } | null = null
+  for (const st of video.steps) {
+    const d = Math.abs(st.ms - ms)
+    if (d <= within && (!best || d < best.d)) best = { ms: st.ms, d }
+  }
+  return best ? best.ms : ms
+}
+
 /** `m:ss` for the player's clock. */
 export function formatClock(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000))

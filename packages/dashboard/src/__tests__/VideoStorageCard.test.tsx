@@ -5,8 +5,6 @@ import { VideoStorageCard } from '@/components/settings/VideoStorageCard'
 import type { WorkspaceSettings } from '@/lib/types'
 import { withQuery } from './withQuery'
 
-// Radix's slider measures its thumb with ResizeObserver, which jsdom does not have.
-globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver
 
 const GB = 1024 * 1024 * 1024
 const settings: WorkspaceSettings = {

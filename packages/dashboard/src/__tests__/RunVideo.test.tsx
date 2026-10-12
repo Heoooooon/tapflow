@@ -2,9 +2,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { RunVideo } from '@/components/runs/RunVideo'
+
 import { WatchedDevice } from '@/components/device/WatchedDevice'
 import { framelessChrome } from '@/lib/framelessChrome'
-import { chromeAt, loadVideo, parseRecords, seekChunk, videoEndNote, videoUnavailableText, type VideoIndex, type VideoSummary } from '@/lib/runVideo'
+import { chromeAt, loadVideo, parseRecords, seekChunk, snapToStep, videoEndNote, videoUnavailableText, type VideoIndex, type VideoSummary } from '@/lib/runVideo'
 import { withQuery } from './withQuery'
 
 // A flow's video on the run page (A4): the file the runner wrote, read back. Records are
@@ -69,6 +70,14 @@ describe('runVideo', () => {
     expect(seekChunk(v, 4500)).toBe(1)
   })
 
+  it('catches a drag on the nearest step start within 2% of the video, at least 150 ms', () => {
+    const v = { durationMs: 5000, steps: [{ index: 0, name: 'a', ms: 500 }, { index: 1, name: 'b', ms: 4100 }] }
+    expect(snapToStep(v, 600)).toBe(500)
+    expect(snapToStep(v, 700)).toBe(700)
+    expect(snapToStep(v, 3960)).toBe(4100)
+    expect(snapToStep({ ...v, durationMs: 60_000 }, 1600)).toBe(500)
+  })
+
   it('takes the chrome in force at a time', () => {
     const v = loadVideo(fixture().index, fixture().file)
     expect(chromeAt(v, 3000)).toEqual({ model: 'a' })
@@ -107,12 +116,15 @@ describe('RunVideo', () => {
     const slider = await screen.findByRole('slider', { name: 'Position in the video of login' })
     expect(slider.getAttribute('aria-valuetext')).toBe('0:00 of 0:05')
     expect(fetchMock.mock.calls.map(([u]) => u)).toEqual(['/api/v1/runs/r1/flows/0/video/index', '/api/v1/runs/r1/flows/0/video'])
-    expect(screen.getByText('Grey stretches did not reach the relay.')).toBeTruthy()
-
-    await userEvent.click(screen.getByRole('button', { name: '0:04 see Home' }))
+    // Marks above the bar: each step's start (the failed one says so), and the stretch that never arrived.
+    expect(screen.getByRole('button', { name: '0:00 tap Login' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '0:00 to 0:04: did not reach the relay' })).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: '0:04 see Home, failed' }))
     expect(slider.getAttribute('aria-valuetext')).toBe('0:04 of 0:05')
-    fireEvent.change(slider, { target: { value: '1000' } })
-    expect(slider.getAttribute('aria-valuetext')).toBe('0:01 of 0:05')
+    // The arrow keys move by 50 ms and never catch on a step.
+    fireEvent.keyDown(slider, { key: 'ArrowRight' })
+    expect(slider.getAttribute('aria-valuenow')).toBe('4150')
+    expect(screen.queryByRole('list', { name: /Steps in the video/ })).toBeNull()
   })
 
   it('says a video the relay no longer keeps is gone, without a player', async () => {
