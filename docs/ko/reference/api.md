@@ -696,7 +696,9 @@ File:
 ```
 
 
-## 설정 (Settings)
+## 설정 (Settings) {#settings}
+
+<a id="설정-settings"></a>
 
 ### `GET /api/v1/settings`
 
@@ -705,10 +707,17 @@ File:
 **응답 `200`**
 
 ```json
-{ "team_name": "My Team", "logo_url": "/uploads/team/logo.png" }
+{
+  "team_name": "My Team",
+  "logo_url": "/uploads/team/logo.png",
+  "video_pass_retention_days": 3,
+  "video_storage_cap_mb": 20480,
+  "video_usage_bytes": 5368709120,
+  "video_effective_cap_bytes": 21474836480
+}
 ```
 
-로고가 없으면 `logo_url`은 `null`입니다.
+로고가 없으면 `logo_url`은 `null`입니다. `video_*`는 [플로우 영상](#run-videos) 보관 설정입니다. `video_usage_bytes`는 지금 영상이 쓰는 용량이고 `video_effective_cap_bytes`는 설정한 저장 공간과 디스크에 실제로 남은 공간 중 작은 쪽입니다.
 
 
 ### `PATCH /api/v1/settings`
@@ -719,7 +728,9 @@ File:
 Content-Type: multipart/form-data
 
 Fields:
-  team_name  string  선택
+  team_name                  string  선택
+  video_pass_retention_days  number  선택  통과한 플로우의 영상을 남길 일수. 0–365
+  video_storage_cap_mb       number  선택  영상에 쓸 저장 공간(MB). 100–10485760
 File:
   logo       이미지 (PNG/JPEG, 최대 2MB) — 선택
 ```
@@ -898,7 +909,7 @@ Query:
 
 실행 하나와 플로우별 결과를 돌려줍니다. 목록 항목의 필드에 아래가 더해집니다.
 
-- `flows`: 계획된 플로우 순서대로입니다. 보고된 플로우는 `status`(`passed`·`failed`)와 `steps`, `device`, `durationMs`, `hasScreenshot`을 담습니다. 아직 보고되지 않은 플로우는 진행 중인 실행에서 `running`(지금 실행 중)이나 `pending`, 끝난 실행에서 `not-run`입니다.
+- `flows`: 계획된 플로우 순서대로입니다. 보고된 플로우는 `status`(`passed`·`failed`)와 `steps`, `device`, `durationMs`, `hasScreenshot`을 담습니다. 영상이 있는 플로우는 `video`에 `ended`, `endReason`, `evicted`, `notRecorded`, `bytes`를 담고 영상이 없으면 `null`입니다. `notRecorded`는 러너가 영상을 남길 수 없었던 이유(`jpeg`, `no-keyframe`)입니다. 아직 보고되지 않은 플로우는 진행 중인 실행에서 `running`(지금 실행 중)이나 `pending`, 끝난 실행에서 `not-run`입니다.
 - `watchSessionId`: 러너가 지금 붙잡고 있는 세션 ID입니다. 진행 중일 때만 값이 있고 [AI 세션 보기](/ko/automation/mcp-server#watch-the-device) 페이지 주소에 씁니다.
 
 존재하지 않는 실행이면 `404`를 받습니다.
@@ -906,6 +917,64 @@ Query:
 ### `GET /api/v1/runs/:id/flows/:idx/screenshot`
 
 플로우의 스크린샷을 `image/png`나 `image/jpeg`로 돌려줍니다. 없으면 `404`를 받습니다.
+
+
+## 플로우 영상 (Flow run videos) {#run-videos}
+
+러너가 실행하면서 올리는 플로우별 영상입니다. 러너가 영상을 열고(`open`) 번호를 붙인 조각을 보낸 뒤(`chunks`) 닫으며(`end`) 대시보드는 조각 목록(`index`)을 읽고 영상 파일을 바이트 범위로 받습니다. 쓰기는 위의 다른 실행 엔드포인트와 같은 규칙을 따르고 러너가 `finish`를 보낸 뒤에도 120초 동안은 마지막 플로우의 끝부분을 받습니다. 통과한 플로우의 영상은 보관 기간이 지나거나 저장 공간이 차면 오래된 것부터 지워집니다. 보관 기간과 저장 공간은 [팀 설정](#settings)에서 정합니다.
+
+### `POST /api/v1/runs/:id/flows/:idx/video/open`
+
+플로우의 영상을 엽니다. 본문은 영상 메타데이터 JSON이며 16KB까지 받습니다. `formatVersion`은 `1`이어야 하고 나머지는 러너가 정하며 릴레이는 그대로 저장합니다.
+
+**응답 `201`** `{ "ok": true, "nextSeq": 0 }`. 이미 열려 있으면 `200`과 다음에 보낼 `nextSeq`를, 이미 끝난 영상이면 `409`를 돌려줍니다.
+
+### `POST /api/v1/runs/:id/flows/:idx/video/chunks/:seq`
+
+`seq`번째 조각을 보냅니다. `seq`는 0부터 10000까지입니다. 본문은 조각의 바이트 그대로이며 8MB까지 받습니다.
+
+```
+Headers:
+  X-Start-Ms  필수  조각의 첫 기록이 영상 시계에서 몇 ms인지
+  X-Keyframe  선택  "1"이면 이 조각이 디코딩을 시작할 수 있는 키프레임으로 시작함
+```
+
+**응답 `200`** `{ "ok": true, "nextSeq": n }`. 이미 받은 조각을 다시 보내면 `200`과 `"duplicate": true`를 돌려줍니다. 열지 않은 영상은 `404`, 이미 끝난 영상은 `409`, 보관하지 않게 된 영상은 `410`을 받습니다. 조각이 8MB를 넘으면 `413`(`reason: "chunk-too-large"`), 플로우 하나의 영상이 100MB를 넘으면 `413`(`reason: "size-limit"`)을 받고 영상이 끝납니다. 저장 공간이 가득 차면 `507`(`reason: "storage-full"`)을 받고 영상이 끝납니다.
+
+### `POST /api/v1/runs/:id/flows/:idx/video/end`
+
+영상을 닫습니다. 처음 받은 종료만 기록하고 다시 보내도 결과가 같습니다.
+
+```
+Body (JSON):
+  lastSeq  number  필수  마지막으로 보낸 조각 번호. 하나도 보내지 않았으면 -1
+  reason   string  필수  done | cancelled | size-limit | storage-full | runner-lost | truncated
+```
+
+**응답 `200`** `{ "ok": true }`
+
+### `GET /api/v1/runs/:id/flows/:idx/video/index`
+
+영상의 조각 목록입니다. 세션 쿠키나 `view` 스코프 PAT로 호출합니다.
+
+```json
+{
+  "meta": { "formatVersion": 1, "codec": "h264", "platform": "ios", "clockBase": 1760230395000, "flowStartMs": 1500 },
+  "bytes": 2483201,
+  "ended": true,
+  "endReason": "done",
+  "evicted": false,
+  "chunks": [{ "seq": 0, "offset": 0, "length": 412300, "startMs": 0, "keyframe": true }],
+  "gaps": []
+}
+```
+
+`gaps`는 받지 못한 조각 번호입니다. `end`가 오지 않았어도 실행이 끝나고 120초가 지났거나 러너의 연결이 끊겨 릴레이가 실행을 닫았으면 `ended`는 `true`이고 `endReason`은 각각 `truncated`, `runner-lost`입니다.
+
+### `GET /api/v1/runs/:id/flows/:idx/video`
+
+영상 파일을 `application/octet-stream`으로 돌려줍니다. `Range` 헤더로 일부를 받을 수 있고(`206`) 범위를 벗어나면 `416`을 받습니다. 녹화 중인 영상은 `Cache-Control: no-store`이고 끝난 영상은 `private`과 `ETag`가 붙습니다. 보관하지 않게 된 영상은 `410`을 받습니다.
+
 
 
 ## 에이전트 (Agents)
