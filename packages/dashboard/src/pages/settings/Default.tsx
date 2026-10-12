@@ -31,6 +31,7 @@ import { toast } from 'sonner'
 import { Pencil } from 'lucide-react'
 import { avatarColors } from '@/lib/avatar'
 import { useAuth } from '@/hooks/useAuth'
+import { VideoStorageCard } from '@/components/settings/VideoStorageCard'
 
 
 const workspaceSchema = z.object({
@@ -247,6 +248,9 @@ export function DefaultSettings() {
           </CardContent>
         </Card>
       )}
+
+      {/* Flow run videos — Admin only, from the same settings read as the workspace */}
+      {isAdmin && settingsQuery.data && <VideoStorageCard settings={settingsQuery.data} />}
 
       {/* Profile — everyone */}
       <Card>

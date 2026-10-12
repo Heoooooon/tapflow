@@ -12,6 +12,7 @@ import {
   pollWhileRunning, runDuration, runOutcomeText, runSourceLabel, shortCommit,
 } from '@/lib/runs'
 import type { RunDetail as Run, RunFlow } from '@/lib/types'
+import { RunVideo } from '@/components/runs/RunVideo'
 
 /**
  * One run: what each flow did, why it failed, and — while it is running — a link to watch it. The watch link is
@@ -157,6 +158,12 @@ function FlowItem({ runId, flow }: { runId: string; flow: RunFlow }) {
       {/* A passed flow's last screen is the evidence that it passed — what the login landed on. */}
       {isReported(flow) && flow.status === 'passed' && flow.hasScreenshot && (
         <div className="mt-3"><LastScreen runId={runId} flow={flow} /></div>
+      )}
+      {/* The whole flow, passed or failed: the screenshot shows where it ended, the video how it got there. */}
+      {flow.video && (
+        <div className="mt-3">
+          <RunVideo runId={runId} idx={flow.idx} flowName={flow.name} summary={flow.video} running={!flow.video.ended} />
+        </div>
       )}
     </li>
   )

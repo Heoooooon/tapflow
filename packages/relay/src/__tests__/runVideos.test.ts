@@ -283,6 +283,20 @@ describe('flow run videos', () => {
     expect((await index(id)).bytes).toBe(10)
   })
 
+  it('tells the run page which flows have a video and in what state, before it loads one', async () => {
+    const id = await newRun(3)
+    await open(id, 0)
+    await chunk(id, 0, Buffer.from('aaaa'))
+    await open(id, 1, PAT_CI, { formatVersion: 1, codec: 'jpeg', notRecorded: 'jpeg' })
+    await end(id, -1, 'done', 1)
+    const run = (await call('GET', `/api/v1/runs/${id}`, bearer(PAT_VIEW))).body as { flows: { video: unknown }[] }
+    expect(run.flows.map((f) => f.video)).toEqual([
+      { ended: false, endReason: null, evicted: false, notRecorded: null, bytes: 4 },
+      { ended: true, endReason: 'done', evicted: false, notRecorded: 'jpeg', bytes: 0 },
+      null,
+    ])
+  })
+
   it('needs a view credential to read', async () => {
     const id = await newRun()
     await open(id)

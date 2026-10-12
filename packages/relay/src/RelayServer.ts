@@ -103,7 +103,7 @@ import { handleListTokens, handleCreateToken, handleRevokeToken } from './api/to
 import { handleGetSettings, handleUpdateSettings } from './api/settings.js'
 import { handleUpdateProfile } from './api/profile.js'
 import { handleUploadRecording, handleListRecordings, handleDownloadRecording, purgeExpiredRecordings } from './api/recordings.js'
-import { handleEndVideo, handleOpenVideo, handleVideoChunk, handleVideoData, handleVideoIndex, purgeRunVideos, releaseStaleVideoReservations, runVideosDirFor } from './api/runVideos.js'
+import { handleEndVideo, handleOpenVideo, handleVideoChunk, handleVideoData, handleVideoIndex, purgeRunVideos, releaseStaleVideoReservations, runVideosDirFor, videoSummaries } from './api/runVideos.js'
 import { abandonRunsOf, handleCreateRun, handleFinishRun, handleGetFlowScreenshot, handleGetRun, handleListRuns, handleReportFlow, handleUploadFlowScreenshot, purgeExpiredRuns, runScreenshotsDirFor, type RunHolders } from './api/runs.js'
 import { handleListAgents, handleGetAgentResources } from './api/agents.js'
 
@@ -575,7 +575,7 @@ export class RelayServer {
     this.runScreenshotsDir = runScreenshotsDirFor(u)
     this.router.post('/api/v1/runs', handleCreateRun)
     this.router.get('/api/v1/runs', (req, res) => handleListRuns(req, res, this.runHolders))
-    this.router.get('/api/v1/runs/:id', (req, res, params) => handleGetRun(req, res, params, this.runHolders))
+    this.router.get('/api/v1/runs/:id', (req, res, params) => handleGetRun(req, res, params, this.runHolders, videoSummaries))
     this.router.post('/api/v1/runs/:id/finish', handleFinishRun)
     this.router.post('/api/v1/runs/:id/flows/:idx', handleReportFlow)
     this.router.post('/api/v1/runs/:id/flows/:idx/screenshot', (req, res, params) => handleUploadFlowScreenshot(req, res, params, this.runScreenshotsDir))

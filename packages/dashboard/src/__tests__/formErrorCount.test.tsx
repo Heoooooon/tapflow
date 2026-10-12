@@ -198,8 +198,8 @@ describe('every form with field errors carries a count', () => {
   const withFieldErrors = files.filter((f) => /<FieldError id=/.test(fs.readFileSync(path.join(root, f), 'utf8')))
 
   it('finds the forms it is about', () => {
-    // Anti-vacuity: the nine forms of #824 live in these seven files.
-    expect(withFieldErrors.length).toBe(7)
+    // Anti-vacuity: the nine forms of #824 live in seven files, and the video storage card (A4) is the eighth.
+    expect(withFieldErrors.length).toBe(8)
   })
 
   it.each(withFieldErrors)('%s', (file) => {

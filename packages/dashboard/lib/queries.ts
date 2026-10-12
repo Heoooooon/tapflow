@@ -1,4 +1,5 @@
 import type { ApiToken, App, Build, Comment, Recording, ReleaseGroup, ResourcePoint, RunDetail, RunListItem, TeamMember, WorkspaceSettings } from '@/lib/types'
+import { VIDEO_FORMAT_VERSION, type VideoIndex } from './runVideo'
 import { api } from '@/lib/api'
 import type { AuthUser } from '@/hooks/useAuth'
 
@@ -25,6 +26,8 @@ export const queryKeys = {
   /** Every filter is in the key, so changing one never shows another filter's rows as this one's. */
   runs: (filters: RunFilters & RunCursor) => ['runs', 'list', filters] as const,
   run: (id: string) => ['runs', 'detail', id] as const,
+  /** A flow's video, loaded when someone asks to play it. */
+  runVideo: (id: string, idx: number) => ['runs', 'video', id, idx] as const,
 }
 
 /**
@@ -259,6 +262,37 @@ export async function getRun(id: string, signal?: AbortSignal): Promise<RunDetai
   if (res.status === 404) return null
   if (!res.ok) throw new Error(`GET /api/v1/runs/${id} failed with ${res.status}`)
   return res.json() as Promise<RunDetail>
+}
+
+/** What loading a flow's video can answer: the index and the bytes, or why there is nothing to play. */
+export type RunVideoLoad =
+  | { kind: 'ready'; index: VideoIndex; file: ArrayBuffer }
+  | { kind: 'gone' }
+  | { kind: 'unsupported' }
+
+/**
+ * A flow's video, index first. Gone (evicted, deleted) and a format this dashboard cannot read are answers, not
+ * failures; a failure throws, so the page can tell "try again" from "there is nothing to play".
+ */
+export async function getRunVideo(runId: string, idx: number, signal?: AbortSignal): Promise<RunVideoLoad> {
+  const indexRes = await fetch(runVideoIndexUrl(runId, idx), { credentials: 'include', signal })
+  if (indexRes.status === 404 || indexRes.status === 410) return { kind: 'gone' }
+  if (!indexRes.ok) throw new Error(`video index ${indexRes.status}`)
+  const index = await indexRes.json() as VideoIndex
+  if (index.evicted) return { kind: 'gone' }
+  if (index.meta.formatVersion !== VIDEO_FORMAT_VERSION) return { kind: 'unsupported' }
+  const fileRes = await fetch(runVideoUrl(runId, idx), { credentials: 'include', signal })
+  if (fileRes.status === 404 || fileRes.status === 410) return { kind: 'gone' }
+  if (!fileRes.ok) throw new Error(`video ${fileRes.status}`)
+  return { kind: 'ready', index, file: await fileRes.arrayBuffer() }
+}
+
+/** A flow's video: its chunk index, and the file the player fetches in one go. */
+export function runVideoIndexUrl(runId: string, idx: number): string {
+  return `/api/v1/runs/${encodeURIComponent(runId)}/flows/${idx}/video/index`
+}
+export function runVideoUrl(runId: string, idx: number): string {
+  return `/api/v1/runs/${encodeURIComponent(runId)}/flows/${idx}/video`
 }
 
 export function runScreenshotUrl(runId: string, idx: number): string {
