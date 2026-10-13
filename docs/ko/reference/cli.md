@@ -375,6 +375,34 @@ tapflow flow run .tapflow/flows/login-smoke.yaml
 
 토큰을 주면 실행 결과를 릴레이에 기록합니다. 기록은 종료 코드를 바꾸지 않습니다. 자세한 내용은 [실행 기록](/ko/automation/flows#run-records)을 참고하세요.
 
+## `tapflow token set`
+
+MCP 서버와 `tapflow flow run`이 읽는 [토큰 파일](/ko/automation/mcp-server#token-file)에 토큰을 저장합니다. 저장하기 전에 릴레이에 한 번 물어보고 릴레이가 받지 않는 토큰은 저장하지 않습니다.
+
+```sh
+tapflow token set --relay wss://tapflow.example.com
+```
+
+| 옵션 | 기본값 | 설명 |
+|------|--------|------|
+| `--relay <url>` | `TAPFLOW_RELAY_URL` 환경변수, 그다음 `ws://localhost:4000` | 토큰을 쓸 릴레이. MCP 서버와 `flow run`이 접속하는 주소와 같아야 합니다. `relay.url` 설정은 읽지 않습니다. |
+
+- 터미널에서 실행하면 입력이 보이지 않는 프롬프트로 토큰을 받습니다. CI처럼 터미널이 없으면 stdin의 첫 줄을 읽습니다(`echo "$TOKEN" | tapflow token set`). 명령 인자로는 받지 않습니다.
+- 토큰에 `view` 스코프가 있는지 확인합니다. 실행 기록에 필요한 `builds:write`는 확인하지 않습니다.
+- 같은 릴레이의 토큰은 바꾸고 다른 릴레이의 토큰은 그대로 둡니다. 파일은 본인만 읽을 수 있게(`600`) 만듭니다.
+
+## `tapflow token status`
+
+토큰 파일에 토큰이 있는 릴레이를 나열하고 각 토큰이 지금도 통하는지 확인합니다. 지금 기본으로 쓰는 릴레이에는 `← current`를 붙이고 토큰 자체는 출력하지 않습니다.
+
+```sh
+tapflow token status
+```
+
+| 옵션 | 기본값 | 설명 |
+|------|--------|------|
+| `--relay <url>` | `TAPFLOW_RELAY_URL` 환경변수, 그다음 `ws://localhost:4000` | `current`로 표시할 릴레이 |
+
 ## `tapflow migrate`
 
 업그레이드 후 이 설치에 필요한 마이그레이션을 한 번에 실행합니다.

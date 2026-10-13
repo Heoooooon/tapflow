@@ -396,6 +396,34 @@ With neither `--session` nor `--device`, it uses the booted device when exactly 
 
 With a token, the run is recorded on the relay. Recording never changes the exit code. See [Run records](/automation/flows#run-records).
 
+## `tapflow token set`
+
+Store a token in the [token file](/automation/mcp-server#token-file) the MCP server and `tapflow flow run` read. The relay is asked first, and a token it does not accept is not stored.
+
+```sh
+tapflow token set --relay wss://tapflow.example.com
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--relay <url>` | `TAPFLOW_RELAY_URL` env, then `ws://localhost:4000` | The relay the token is for. Use the address the MCP server and `flow run` connect to. Does not read `relay.url`. |
+
+- In a terminal it asks for the token with a hidden prompt. With no terminal, as in CI, it reads the first line of stdin (`echo "$TOKEN" | tapflow token set`). It never takes the token as an argument.
+- It checks that the token has the `view` scope. Recording runs also needs `builds:write`, which is not checked.
+- A token for the same relay is replaced, and other relays' tokens are kept. The file is created readable by you only (`600`).
+
+## `tapflow token status`
+
+List the relays the token file has a token for, and check whether each token still works. The relay used by default is marked `← current`. Tokens are never printed.
+
+```sh
+tapflow token status
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--relay <url>` | `TAPFLOW_RELAY_URL` env, then `ws://localhost:4000` | The relay to mark as current |
+
 ## `tapflow migrate`
 
 Run every migration this install still needs, after an upgrade.
