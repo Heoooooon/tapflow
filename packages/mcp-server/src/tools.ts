@@ -142,6 +142,8 @@ type ToolResult = { content: Array<{ type: 'text'; text: string } | { type: 'ima
 
 const RUNS_LIMIT = 50
 const RUN_SCREENSHOTS_MAX = 4
+/** Raw bytes across get_run's images, about 5.3 MB once base64'd. */
+const RUN_SCREENSHOT_BYTES = 4 * 1024 * 1024
 
 function ok(text: string): ToolResult {
   return { content: [{ type: 'text', text }] }
@@ -208,8 +210,9 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     {
       description:
         'Read one recorded flow run: each flow\'s steps, failure message, whether the failure was the app ("product") or ' +
-        'the environment, and the flow file\'s path. The screen each failed flow stopped on comes back as an image. To ' +
-        'repair a flow, edit the YAML at its path and replay it with run_flow. Read-only.',
+        'the environment, and the flow file\'s path. The screen each failed flow stopped on comes back as an image. A ' +
+        'file path is as the runner was given it, relative to the directory it ran in (the CI job\'s, for a CI run), so ' +
+        'find that file in your checkout before editing it; then replay it with run_flow. Read-only.',
       inputSchema: {
         runId: z.string().describe('Run id from list_runs'),
       },
@@ -217,12 +220,33 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     async ({ runId }) => {
       try {
         const run = await client.getRun(runId)
-        const content: ToolResult['content'] = [{ type: 'text', text: JSON.stringify(run, null, 2) }]
+        // A passed flow's steps are only counted: a suite of twenty flows with thirty steps each would otherwise be
+        // tens of KB, and the failed flow an agent came for would sit at the end of it, where a client cuts. Compact
+        // JSON for the same reason.
+        const brief = {
+          ...run,
+          flows: run.flows.map(({ steps, ...f }) => (f.status === 'passed' ? { ...f, stepCount: steps?.length ?? 0 } : { ...f, ...(steps ? { steps } : {}) })),
+        }
+        const content: ToolResult['content'] = [{ type: 'text', text: JSON.stringify(brief) }]
         // Only failed flows: a passed flow's last screen is evidence for a person, and would only make the answer
-        // larger here. Capped, since each image is a screen's worth of tokens.
+        // larger here. Capped by count and by bytes, since each image is a screen's worth of tokens and a client may
+        // refuse a whole answer over one large image.
         const failed = run.flows.filter((f) => f.status === 'failed' && f.hasScreenshot)
+        let bytes = 0
         for (const f of failed.slice(0, RUN_SCREENSHOTS_MAX)) {
-          const shot = await client.runScreenshot(run.id, f.idx)
+          // One screenshot that cannot be read costs that screenshot, not the record already in hand.
+          let shot: Awaited<ReturnType<typeof client.runScreenshot>>
+          try {
+            shot = await client.runScreenshot(run.id, f.idx)
+          } catch (e) {
+            content.push({ type: 'text', text: `Could not read the screenshot of ${f.name} (flow ${f.idx}): ${(e as Error).message}` })
+            continue
+          }
+          if (shot && bytes + shot.data.length > RUN_SCREENSHOT_BYTES) {
+            content.push({ type: 'text', text: `The screenshot of ${f.name} (flow ${f.idx}) is left out to keep this answer small; open the run's page (url) to see it.` })
+            continue
+          }
+          if (shot) bytes += shot.data.length
           if (!shot) {
             content.push({ type: 'text', text: `There is no screenshot of ${f.name} (flow ${f.idx}) on the relay any more.` })
             continue

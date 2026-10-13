@@ -191,8 +191,11 @@ get_run     → which step failed and why, the screen at that moment, and the fl
 run_flow    → replay the fixed flow on a device to check it
 ```
 
+- A recorded flow file path is as the runner was given it, relative to the directory it ran in (the CI job's working directory, for a CI run). The coding agent finds that file in its own checkout.
 - Run records are only read. The coding agent replays the flow itself with `run_flow`; nothing re-runs the CI job.
 - `get_run` returns up to 4 screenshots of failed flows with the record. A passed flow's last screen and the videos are not included; open the run's page at the result's `url` to see them.
 - A failure whose `failureKind` is `environment` was the device, the agent or the relay, not the app or the flow. There is nothing to fix in the flow.
+
+The result's `url` is built from the `TAPFLOW_RELAY_URL` the MCP server connected with. Unlike the watch link, it does not use the relay's public address, so a server that connected by a name inside a container network (such as `ws://relay:4000`) gets a link a browser cannot open.
 
 For when runs are recorded and what the dashboard shows, see [Flow Runs](/automation/runs).

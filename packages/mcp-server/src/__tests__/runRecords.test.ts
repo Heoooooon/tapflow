@@ -135,6 +135,32 @@ describe('get_run / list_runs tools', () => {
     expect(text(res)).toContain('2 more failed flows have a screenshot')
   })
 
+  it('counts a passed flow\'s steps instead of listing them, and lists a failed flow\'s', async () => {
+    const passed = { ...passedFlow, steps: Array.from({ length: 30 }, (_, i) => ({ index: i, name: `step ${i}`, status: 'passed', durationMs: 10 })) }
+    runWith([passed, failedFlow(1, false)])
+    const res = await tools(new TapflowClient(RELAY, TOKEN)).get('get_run')!({ runId: 'run-1' })
+    const body = JSON.parse(res.content[0]!.text!) as { flows: Array<{ steps?: unknown[]; stepCount?: number }> }
+    expect(body.flows[0]).toMatchObject({ stepCount: 30 })
+    expect(body.flows[0]!.steps).toBeUndefined()
+    expect(body.flows[1]!.steps).toHaveLength(2)
+  })
+
+  it('keeps the record when a screenshot cannot be read, and says which', async () => {
+    runWith([failedFlow(0), failedFlow(1)], (url) => (url.pathname.includes('/flows/0/') ? new Response('boom', { status: 500 }) : new Response(PNG, { headers: { 'Content-Type': 'image/png' } })))
+    const res = await tools(new TapflowClient(RELAY, TOKEN)).get('get_run')!({ runId: 'run-1' })
+    expect(res.isError).toBeFalsy()
+    expect(text(res)).toContain('Could not read the screenshot of flow-0 (flow 0)')
+    expect(images(res)).toHaveLength(1)
+  })
+
+  it('leaves out a screenshot that would take the answer past its byte budget', async () => {
+    const big = Buffer.alloc(3 * 1024 * 1024, 1)
+    runWith([failedFlow(0), failedFlow(1)], () => new Response(big, { headers: { 'Content-Type': 'image/png' } }))
+    const res = await tools(new TapflowClient(RELAY, TOKEN)).get('get_run')!({ runId: 'run-1' })
+    expect(images(res)).toHaveLength(1)
+    expect(text(res)).toContain('The screenshot of flow-1 (flow 1) is left out to keep this answer small')
+  })
+
   it('reports a missing run as an error', async () => {
     stubRelay(() => Response.json({ error: 'Run not found' }, { status: 404 }))
     const res = await tools(new TapflowClient(RELAY, TOKEN)).get('get_run')!({ runId: 'nope' })

@@ -1339,6 +1339,9 @@ export class TapflowClient {
       buildId: b?.id ?? null,
       ci: r.ci ? { branch: r.ci.branch, commit: r.ci.commit, jobUrl: r.ci.jobUrl } : null,
       // Built from the address this server dialled, as `watchUrlFor` falls back to: the person handed it runs this server.
+      // Unlike a watch link, there is no public address from the relay to prefer — the runs API carries none — so a
+      // server that reaches the relay by an internal name (`ws://relay:4000` in a compose network) hands out a link only
+      // that network opens. The docs say so.
       url: new URL(`/automation/runs/${encodeURIComponent(r.id)}`, this.httpBase()).toString(),
     }
   }
