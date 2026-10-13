@@ -414,7 +414,7 @@ tapflow token set --relay wss://tapflow.example.com
 
 ## `tapflow token status`
 
-List the relays the token file has a token for, and check whether each token still works. The relay used by default is marked `← current`. Tokens are never printed.
+List the relays the token file has a token for, and check whether each token still works. The relay the MCP server connects to by default (`TAPFLOW_RELAY_URL`, else `ws://localhost:4000`) is marked `← current`. Tokens are never printed. `flow run` does not read `TAPFLOW_RELAY_URL` and follows `--relay` only.
 
 ```sh
 tapflow token status

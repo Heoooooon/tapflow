@@ -393,7 +393,7 @@ tapflow token set --relay wss://tapflow.example.com
 
 ## `tapflow token status`
 
-토큰 파일에 토큰이 있는 릴레이를 나열하고 각 토큰이 지금도 통하는지 확인합니다. 지금 기본으로 쓰는 릴레이에는 `← current`를 붙이고 토큰 자체는 출력하지 않습니다.
+토큰 파일에 토큰이 있는 릴레이를 나열하고 각 토큰이 지금도 통하는지 확인합니다. MCP 서버가 기본으로 접속하는 릴레이(`TAPFLOW_RELAY_URL`, 없으면 `ws://localhost:4000`)에는 `← current`를 붙이고 토큰 자체는 출력하지 않습니다. `flow run`은 `TAPFLOW_RELAY_URL`을 읽지 않고 `--relay`만 따릅니다.
 
 ```sh
 tapflow token status

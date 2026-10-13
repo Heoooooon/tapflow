@@ -202,6 +202,23 @@ describe('writeCredential', () => {
     expect(listCredentials(file)).toEqual(['https://team.example.test', 'http://localhost:4000'])
   })
 
+  it('lists equivalent keys once', () => {
+    fs.writeFileSync(file, JSON.stringify({ version: 1, relays: { 'ws://127.0.0.1:4000': { token: T2 }, 'http://localhost:4000': { token: T1 } } }), { mode: 0o600 })
+    expect(listCredentials(file)).toEqual(['http://localhost:4000'])
+  })
+
+  it('leaves no temp file behind, and the old file whole, when the write itself fails', () => {
+    fs.writeFileSync(file, JSON.stringify({ version: 1, relays: {} }), { mode: 0o600 })
+    const failing = vi.spyOn(fs, 'writeFileSync').mockImplementation(() => { throw Object.assign(new Error('no space'), { code: 'ENOSPC' }) })
+    try {
+      expect(() => writeCredential(file, 'ws://localhost:4000', T1)).toThrow(/no space/)
+    } finally {
+      failing.mockRestore()
+    }
+    expect(fs.readdirSync(dir)).toEqual(['credentials.json'])
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ version: 1, relays: {} })
+  })
+
   it('refuses a file it cannot write safely, and leaves it as it was', () => {
     fs.writeFileSync(file, '{ not json')
     expect(() => writeCredential(file, 'ws://localhost:4000', T1)).toThrow(CredentialFileError)

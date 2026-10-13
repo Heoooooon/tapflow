@@ -38,7 +38,8 @@ export function defaultTokenDeps(): TokenDeps {
       // The first line only: a pipe that never closes (docker -i, ssh) would otherwise hold the command forever.
       const rl = readline.createInterface({ input: process.stdin })
       let done = false
-      rl.once('line', (line) => { done = true; rl.close(); resolve(line) })
+      // close() only pauses stdin; an open pipe would still hold the process after the token is stored.
+      rl.once('line', (line) => { done = true; rl.close(); process.stdin.destroy(); resolve(line) })
       rl.once('close', () => { if (!done) resolve(null) })
     }),
     stdinIsTTY: process.stdin.isTTY === true,
@@ -100,11 +101,9 @@ async function readToken(deps: TokenDeps): Promise<string | null> {
 
 export async function cmdTokenSet(opts: { relay?: string }, deps: TokenDeps = defaultTokenDeps()): Promise<number> {
   const relayUrl = tokenRelayUrl(opts, deps.env)
-  let origin: string
-  try {
-    origin = originOf(relayUrl)
-  } catch {
-    deps.err(`${RED}✗${R} --relay is not a relay URL (${JSON.stringify(relayUrl)}) — use e.g. ws://localhost:4000`)
+  const origin = safeOrigin(relayUrl)
+  if (!origin) {
+    deps.err(`${RED}✗${R} ${opts.relay ? '--relay' : 'TAPFLOW_RELAY_URL'} is not a relay URL (${JSON.stringify(relayUrl)}) — use e.g. ws://localhost:4000`)
     return 1
   }
   const token = (await readToken(deps))?.trim() ?? ''
@@ -143,6 +142,7 @@ export async function cmdTokenSet(opts: { relay?: string }, deps: TokenDeps = de
 export async function cmdTokenStatus(opts: { relay?: string }, deps: TokenDeps = defaultTokenDeps()): Promise<number> {
   const file = credentialsPath(deps.env)
   const current = safeOrigin(tokenRelayUrl(opts, deps.env))
+  if (!current) deps.out(`${YELLOW}${opts.relay ? '--relay' : 'TAPFLOW_RELAY_URL'} is not a relay URL (${JSON.stringify(tokenRelayUrl(opts, deps.env))}), so no relay is marked current.${R}`)
   const origins = listCredentials(file)
   if (deps.env['TAPFLOW_TOKEN']) deps.out(`${YELLOW}TAPFLOW_TOKEN is set in this shell; a client that has it uses it instead of the file.${R}`)
   if (origins.length === 0) {
@@ -152,9 +152,14 @@ export async function cmdTokenStatus(opts: { relay?: string }, deps: TokenDeps =
   deps.out(`Tokens in ${file}:`)
   for (const origin of origins) {
     const token = readCredential(file, origin).token
+    const mark = origin === current ? ' ← current' : ''
+    // A hand-edited value is not sent: the relay's answer would blame the token's validity, not its shape.
+    if (!PAT_PATTERN.test(token)) {
+      deps.out(`  ${RED}✗${R} ${origin}${mark} — the stored value is not a tapflow personal access token`)
+      continue
+    }
     // Each token goes to its own relay only.
     const check = await checkToken(deps.fetch, origin, token)
-    const mark = origin === current ? ' ← current' : ''
     deps.out(check.ok ? `  ${GREEN}✓${R} ${origin}${mark}` : `  ${RED}✗${R} ${origin}${mark} — ${check.reason}`)
   }
   if (current && !origins.includes(current)) {
@@ -163,7 +168,17 @@ export async function cmdTokenStatus(opts: { relay?: string }, deps: TokenDeps =
   return 0
 }
 
+/**
+ * The origin a relay URL keys the file by, or null when it is not a relay address. Stricter than `originOf`, which
+ * reads `localhost:4000` as a URL with the scheme `localhost:` and returns `http://` — a key nothing would match.
+ */
 function safeOrigin(url: string | undefined): string | null {
   if (!url) return null
-  try { return originOf(url) } catch { return null }
+  try {
+    const u = new URL(url)
+    if (!['ws:', 'wss:', 'http:', 'https:'].includes(u.protocol) || !u.hostname) return null
+    return originOf(url)
+  } catch {
+    return null
+  }
 }

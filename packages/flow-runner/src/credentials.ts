@@ -162,7 +162,7 @@ export function tokenRefusal(source: TokenSource): string {
     }
     case 'file':
       return `the relay at ${source.origin} did not accept the token stored for it in ${source.path} ` +
-        `(unknown on this relay, revoked or expired): ${setIt(source.origin)} with one minted on this relay`
+        `(unknown on this relay, revoked or expired): ${setIt(source.origin)} with one minted on this relay, or replace it there`
     case 'none': {
       const others = readCredential(source.path, source.origin).origins
       return `no token for the relay at ${source.origin}: ${setIt(source.origin)}, or ${store}` +
@@ -186,7 +186,8 @@ export class CredentialFileError extends Error {}
 export function listCredentials(file: string): string[] {
   const parsed = readFileObject(file)
   const relays = parsed && typeof parsed.relays === 'object' && parsed.relays !== null ? Object.keys(parsed.relays) : []
-  return relays.flatMap((k) => { try { return [originOf(k)] } catch { return [] } })
+  // Equivalent keys collapse to one origin: readers take the first match, so a second would only repeat it.
+  return [...new Set(relays.flatMap((k) => { try { return [originOf(k)] } catch { return [] } }))]
 }
 
 function readFileObject(file: string): Record<string, unknown> | null {
@@ -246,11 +247,12 @@ export function writeCredential(file: string, relayUrl: string, token: string): 
   const temp = path.join(dir, `.${path.basename(file)}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`)
   const fd = fs.openSync(temp, 'wx', 0o600)
   try {
-    fs.writeSync(fd, `${JSON.stringify({ ...existing, version: 1, relays }, null, 2)}\n`)
-  } finally {
-    fs.closeSync(fd)
-  }
-  try {
+    try {
+      // writeFileSync on an fd loops until every byte is out; a single writeSync may return short on a full disk.
+      fs.writeFileSync(fd, `${JSON.stringify({ ...existing, version: 1, relays }, null, 2)}\n`)
+    } finally {
+      fs.closeSync(fd)
+    }
     renameOnce(temp, file)
   } catch (e) {
     fs.rmSync(temp, { force: true })

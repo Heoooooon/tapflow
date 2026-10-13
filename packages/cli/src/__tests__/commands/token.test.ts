@@ -102,6 +102,12 @@ describe('tapflow token set', () => {
     expect(fs.readFileSync(file, 'utf8')).toBe('{ broken')
   })
 
+  it('names TAPFLOW_RELAY_URL, not --relay, when that is the bad address', async () => {
+    const { d, text } = deps({ env: { TAPFLOW_TOKEN_FILE: file, TAPFLOW_RELAY_URL: 'localhost:4000' } })
+    expect(await cmdTokenSet({}, d)).toBe(1)
+    expect(text()).toContain('TAPFLOW_RELAY_URL is not a relay URL')
+  })
+
   it('takes only the first line of stdin, trimmed', async () => {
     const { d } = deps({ readStdinLine: async () => `${TOKEN}\r` })
     expect(await cmdTokenSet({}, d)).toBe(0)
@@ -123,6 +129,20 @@ describe('tapflow token status', () => {
     expect(text()).toContain('TAPFLOW_TOKEN is set in this shell')
     expect(text()).not.toContain(TOKEN)
     expect(text()).not.toContain(OTHER)
+  })
+
+  it('does not send a stored value that is not a token, and says what is wrong with it', async () => {
+    fs.writeFileSync(file, JSON.stringify({ version: 1, relays: { 'http://localhost:4000': { token: 'hand-edited' } } }))
+    const { d, fetchMock, text } = deps()
+    await cmdTokenStatus({}, d)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(text()).toContain('the stored value is not a tapflow personal access token')
+  })
+
+  it('says when the current relay address is not one', async () => {
+    const { d, text } = deps({ env: { TAPFLOW_TOKEN_FILE: file, TAPFLOW_RELAY_URL: 'localhost:4000' } })
+    await cmdTokenStatus({}, d)
+    expect(text()).toContain('TAPFLOW_RELAY_URL is not a relay URL')
   })
 
   it('says when there is no file, and when the current relay has no token', async () => {
