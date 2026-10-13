@@ -27,9 +27,10 @@ Point it at your tapflow relay:
 
 ## Tools
 
-`list_devices`, `connect_device`, `disconnect_device`, `boot_device`, `screenshot`, `query_ui_tree`, `run_flow`, `tap`, `swipe`, `type_text`, `press_key`, `press_button`, `install_app`, `launch_app`, `list_builds`
+`list_devices`, `connect_device`, `disconnect_device`, `boot_device`, `screenshot`, `query_ui_tree`, `run_flow`, `tap`, `swipe`, `type_text`, `press_key`, `press_button`, `install_app`, `launch_app`, `list_builds`, `list_runs`, `get_run`
 
 - `query_ui_tree` returns the accessibility tree as `{ role, label, identifier, frame, enabled }` with frames normalized 0-1 — tap by element instead of guessing coordinates from screenshots.
+- `list_runs` and `get_run` read the run records `tapflow flow run` leaves on the relay, with the screen each failed flow stopped on — so an agent can repair a failed CI flow and check it with `run_flow`.
 - `run_flow` replays a [`@tapflowio/flow-runner`](https://www.npmjs.com/package/@tapflowio/flow-runner) YAML flow deterministically — author once with the agent, replay with zero LLM calls.
 
 Full guide: [tapflow.dev/automation/mcp-server](https://www.tapflow.dev/automation/mcp-server)

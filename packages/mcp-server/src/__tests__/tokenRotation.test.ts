@@ -175,7 +175,7 @@ describe('startClient', () => {
     const lines: string[] = []
     const client = await startClient({ TAPFLOW_RELAY_URL: `ws://localhost:${r.port}`, TAPFLOW_TOKEN_FILE: file }, (l) => lines.push(l))
     expect(client).not.toBeNull()
-    expect(lines).toEqual([expect.stringContaining('until then screenshot, query_ui_tree and list_builds are refused')])
+    expect(lines).toEqual([expect.stringContaining('until then screenshot, query_ui_tree, list_builds, list_runs and get_run are refused')])
     client!.disconnect()
     await r.close()
   })

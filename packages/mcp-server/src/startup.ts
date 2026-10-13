@@ -54,10 +54,10 @@ export async function startClient(env: NodeJS.ProcessEnv, stderr: (line: string)
   if (tokens.token) {
     const res = await fetchWithToken(tokens, new URL('/api/v1/apps', tokens.origin).toString(), {}).catch(() => null)
     if (res?.status === 401) stderr(tokenRefusal(tokens))
-    else if (res?.status === 403) stderr(`the token for ${tokens.origin} lacks the view scope, so screenshot, query_ui_tree and list_builds will be refused`)
+    else if (res?.status === 403) stderr(`the token for ${tokens.origin} lacks the view scope, so screenshot, query_ui_tree, list_builds, list_runs and get_run will be refused`)
     await res?.body?.cancel().catch(() => {})
   } else {
-    stderr(`${tokenRefusal(tokens)}; until then screenshot, query_ui_tree and list_builds are refused`)
+    stderr(`${tokenRefusal(tokens)}; until then screenshot, query_ui_tree, list_builds, list_runs and get_run are refused`)
   }
   return client
 }
