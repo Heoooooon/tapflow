@@ -15,6 +15,15 @@ export const RUN_STATUS_LABEL: Record<RunStatus, string> = {
   aborted: 'Cancelled',
 }
 
+/**
+ * The badge for how a run or a flow ended. **A failure that was only ever the environment is not red**: red is a
+ * regression in the app, the thing a list of runs is scanned for, and a device or relay problem is not one.
+ */
+export function failureBadge(status: RunStatus, failureKind: string | null): { label: string; tone: (typeof RUN_STATUS_TONE)[RunStatus] } {
+  if (status === 'failed' && failureKind === 'environment') return { label: 'Environment problem', tone: 'backlog' }
+  return { label: RUN_STATUS_LABEL[status], tone: RUN_STATUS_TONE[status] }
+}
+
 /** SQLite's `datetime('now')` is naive UTC ("YYYY-MM-DD HH:MM:SS"); read without a zone it would be local time. */
 export function parseRelayTime(value: string): Date {
   const hasTz = /[zZ]|[+-]\d{2}:?\d{2}$/.test(value)
