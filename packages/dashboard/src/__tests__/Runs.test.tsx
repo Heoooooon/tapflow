@@ -294,6 +294,21 @@ describe('Run detail', () => {
     expect(screen.queryByText('Failed')).toBeNull()
   })
 
+  it('keeps a run with an app failure red while its environment-only flow is gray', async () => {
+    stubRelay(() => Response.json(detail({
+      status: 'failed', exitCode: 1, failureKind: 'product',
+      flows: [
+        { idx: 0, name: 'login', file: null, status: 'failed', device: null, failureKind: 'product', failureMessage: 'no element "Pay"', durationMs: 900, steps: [], hasScreenshot: false },
+        { idx: 1, name: 'checkout', file: null, status: 'failed', device: null, failureKind: 'environment', failureMessage: 'agent went away', durationMs: 300, steps: [], hasScreenshot: false },
+      ],
+    })))
+    renderAt('/automation/runs/r1')
+    await screen.findByText('agent went away')
+    // The run's badge and login's are both Failed; only checkout's says the environment.
+    expect(screen.getAllByText('Failed')).toHaveLength(2)
+    expect(screen.getAllByText('Environment problem')).toHaveLength(1)
+  })
+
   it('shows the screen a passed flow ended on, as its evidence', async () => {
     stubRelay(() => Response.json(detail({
       flows: [{ idx: 0, name: 'login', file: null, status: 'passed', device: null, failureKind: null, failureMessage: null, durationMs: 1200, steps: [], hasScreenshot: true }],
