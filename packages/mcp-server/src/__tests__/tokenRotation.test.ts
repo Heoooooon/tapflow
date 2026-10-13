@@ -166,7 +166,7 @@ describe('startClient', () => {
     const lines: string[] = []
     const client = await startClient({ TAPFLOW_RELAY_URL: `ws://localhost:${r.port}`, TAPFLOW_TOKEN_FILE: file }, (l) => lines.push(l))
     expect(client).toBeNull()
-    expect(lines.join('\n')).toContain(`no token for the relay at http://localhost:${r.port}: store one in ${file}`)
+    expect(lines.join('\n')).toContain(`no token for the relay at http://localhost:${r.port}: run \`tapflow token set --relay http://localhost:${r.port}\`, or store one in ${file}`)
     await r.close()
   })
 

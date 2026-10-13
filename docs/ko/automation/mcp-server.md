@@ -99,7 +99,7 @@ MCP를 지원하는 클라이언트라면 모두 tapflow를 사용할 수 있습
 
 ## 토큰을 파일에 두기 {#token-file}
 
-`TAPFLOW_TOKEN`을 주지 않으면 MCP 서버는 토큰을 파일에서 읽습니다. 릴레이가 토큰을 거부하면 파일을 다시 읽어 한 번 더 시도하므로 토큰을 바꿀 때 MCP 서버를 다시 등록하거나 재시작하지 않아도 됩니다.
+`TAPFLOW_TOKEN`을 주지 않으면 MCP 서버는 토큰을 파일에서 읽습니다. 파일에는 `tapflow token set`으로 저장하는 것이 가장 간단합니다. 이 명령은 저장하기 전에 릴레이에 토큰을 확인합니다. `tapflow` CLI가 없는 컴퓨터에서는 아래 형식으로 직접 써도 됩니다. 릴레이가 토큰을 거부하면 파일을 다시 읽어 한 번 더 시도하므로 토큰을 바꿀 때 MCP 서버를 다시 등록하거나 재시작하지 않아도 됩니다.
 
 - 파일은 `~/.config/tapflow/credentials.json`에 둡니다. `XDG_CONFIG_HOME`이 있으면 그 아래 `tapflow/credentials.json`을 쓰고 `TAPFLOW_TOKEN_FILE`이 있으면 그 경로를 씁니다. MCP 서버를 실행하는 컴퓨터의 홈 디렉터리이고 릴레이가 도는 Mac의 홈 디렉터리가 아닙니다.
 - 토큰은 릴레이마다 따로 둡니다. 키는 릴레이 주소의 origin이고 `ws://`는 `http://`로, `wss://`는 `https://`로 적습니다.

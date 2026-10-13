@@ -99,7 +99,7 @@ Any MCP-compatible client can use tapflow. Add the following to your MCP config 
 
 ## Keep the token in a file {#token-file}
 
-Without `TAPFLOW_TOKEN`, the MCP server reads its token from a file. When the relay refuses the token, the server reads the file again and retries once, so replacing a token needs no re-registration and no restart.
+Without `TAPFLOW_TOKEN`, the MCP server reads its token from a file. `tapflow token set` is the simplest way to store one, and it checks the token with the relay first; on a computer without the `tapflow` CLI, write the file by hand in the shape below. When the relay refuses the token, the server reads the file again and retries once, so replacing a token needs no re-registration and no restart.
 
 - The file is `~/.config/tapflow/credentials.json`, or `tapflow/credentials.json` under `XDG_CONFIG_HOME` when that is set, or the path in `TAPFLOW_TOKEN_FILE`. It is in the home directory of the computer that runs the MCP server, not of the Mac the relay runs on.
 - Each relay has its own token, keyed by the relay address's origin; write `ws://` as `http://` and `wss://` as `https://`.

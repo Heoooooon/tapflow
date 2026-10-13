@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { credentialsPath, fetchWithToken, originOf, readCredential, resolveToken, tokenRefusal } from '../credentials'
+import { CredentialFileError, credentialsPath, fetchWithToken, listCredentials, originOf, readCredential, resolveToken, tokenRefusal, writeCredential } from '../credentials'
 
 // Where a client's token comes from, and how a rotated one reaches a running process (T1). The case behind it: an
 // MCP server registered with a token minted on another relay, and the only fix was to re-register it.
@@ -159,7 +159,7 @@ describe('tokenRefusal', () => {
   it('names the relay, where the token came from, and the fix for that source', () => {
     const relayUrl = 'wss://team.example.test'
     expect(tokenRefusal(resolveToken({ relayUrl, explicit: 'x', env: env() })))
-      .toMatch(/^the relay at https:\/\/team\.example\.test did not accept the token from --token .*remove --token and store one in .*credentials\.json under "https:\/\/team\.example\.test"/)
+      .toMatch(/^the relay at https:\/\/team\.example\.test did not accept the token from --token .*remove --token and run `tapflow token set --relay https:\/\/team\.example\.test` \(or store one in .*credentials\.json under "https:\/\/team\.example\.test"\)/)
     expect(tokenRefusal(resolveToken({ relayUrl, env: env({ TAPFLOW_TOKEN: 'x' }) }))).toContain('from TAPFLOW_TOKEN')
     write({ 'https://team.example.test': 'tflw_pat_x' })
     expect(tokenRefusal(resolveToken({ relayUrl, env: env() }))).toContain('the token stored for it in')
@@ -168,11 +168,70 @@ describe('tokenRefusal', () => {
   it('without a token, lists the relays the file does have one for', () => {
     write({ 'http://localhost:4000': 'tflw_pat_x' })
     const message = tokenRefusal(resolveToken({ relayUrl: 'wss://team.example.test', env: env() }))
-    expect(message).toMatch(/^no token for the relay at https:\/\/team\.example\.test: store one in /)
+    expect(message).toMatch(/^no token for the relay at https:\/\/team\.example\.test: run `tapflow token set --relay https:\/\/team\.example\.test`, or store one in /)
     expect(message).toContain('(the file has tokens for http://localhost:4000)')
   })
 
   it('reads a missing file as no token', () => {
     expect(readCredential(path.join(dir, 'absent.json'), 'http://localhost:4000')).toEqual({ token: '', origins: [] })
+  })
+})
+
+describe('writeCredential', () => {
+  const T1 = `tflw_pat_${'a'.repeat(64)}`
+  const T2 = `tflw_pat_${'b'.repeat(64)}`
+
+  it('creates the file 0600 in a 0700 directory, keyed by origin, and reads back', () => {
+    const nested = path.join(dir, 'cfg', 'tapflow', 'credentials.json')
+    expect(writeCredential(nested, 'ws://localhost:4000', T1)).toEqual({ origin: 'http://localhost:4000' })
+    expect(readCredential(nested, 'http://localhost:4000').token).toBe(T1)
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(nested).mode & 0o777).toBe(0o600)
+      expect(fs.statSync(path.dirname(nested)).mode & 0o777).toBe(0o700)
+    }
+    expect(fs.readdirSync(path.dirname(nested))).toEqual(['credentials.json'])
+  })
+
+  it('keeps other relays and unknown keys, and replaces every key for the same origin', () => {
+    fs.writeFileSync(file, JSON.stringify({ version: 1, note: 'mine', relays: { 'ws://127.0.0.1:4000/': { token: 'old' }, 'https://team.example.test': { token: T2 } } }), { mode: 0o600 })
+    writeCredential(file, 'ws://localhost:4000', T1)
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8')) as { note: string; relays: Record<string, unknown> }
+    expect(saved.note).toBe('mine')
+    expect(Object.keys(saved.relays)).toEqual(['https://team.example.test', 'http://localhost:4000'])
+    expect(readCredential(file, 'http://localhost:4000').token).toBe(T1)
+    expect(listCredentials(file)).toEqual(['https://team.example.test', 'http://localhost:4000'])
+  })
+
+  it('lists equivalent keys once', () => {
+    fs.writeFileSync(file, JSON.stringify({ version: 1, relays: { 'ws://127.0.0.1:4000': { token: T2 }, 'http://localhost:4000': { token: T1 } } }), { mode: 0o600 })
+    expect(listCredentials(file)).toEqual(['http://localhost:4000'])
+  })
+
+  it('leaves no temp file behind, and the old file whole, when the write itself fails', () => {
+    fs.writeFileSync(file, JSON.stringify({ version: 1, relays: {} }), { mode: 0o600 })
+    const failing = vi.spyOn(fs, 'writeFileSync').mockImplementation(() => { throw Object.assign(new Error('no space'), { code: 'ENOSPC' }) })
+    try {
+      expect(() => writeCredential(file, 'ws://localhost:4000', T1)).toThrow(/no space/)
+    } finally {
+      failing.mockRestore()
+    }
+    expect(fs.readdirSync(dir)).toEqual(['credentials.json'])
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ version: 1, relays: {} })
+  })
+
+  it('refuses a file it cannot write safely, and leaves it as it was', () => {
+    fs.writeFileSync(file, '{ not json')
+    expect(() => writeCredential(file, 'ws://localhost:4000', T1)).toThrow(CredentialFileError)
+    expect(fs.readFileSync(file, 'utf8')).toBe('{ not json')
+    fs.writeFileSync(file, JSON.stringify({ version: 2, relays: {} }))
+    expect(() => writeCredential(file, 'ws://localhost:4000', T1)).toThrow(/not a version 1/)
+    if (process.platform !== 'win32') {
+      const real = path.join(dir, 'real.json')
+      fs.writeFileSync(real, JSON.stringify({ version: 1, relays: {} }))
+      fs.rmSync(file)
+      fs.symlinkSync(real, file)
+      expect(() => writeCredential(file, 'ws://localhost:4000', T1)).toThrow(/symlink/)
+      expect(fs.readFileSync(real, 'utf8')).toBe(JSON.stringify({ version: 1, relays: {} }))
+    }
   })
 })

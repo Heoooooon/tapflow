@@ -14,6 +14,7 @@ import { cmdBoot } from './commands/boot.js'
 import { cmdStart } from './commands/start.js'
 import { cmdRelayStart } from './commands/relay-start.js'
 import { cmdAgentStart } from './commands/agent-start.js'
+import { cmdTokenSet, cmdTokenStatus } from './commands/token.js'
 import { cmdReset } from './commands/reset.js'
 import { cmdStatus } from './commands/status.js'
 import { cmdLogs } from './commands/logs.js'
@@ -89,6 +90,21 @@ export function createCli(): CAC {
       if (subcommand === 'start') return cmdAgentStart(opts)
       console.error(`Unknown subcommand: agent ${subcommand}`)
       process.exit(1)
+    })
+
+  cli
+    .command('token <subcommand>', 'Token commands (subcommand: set | status)')
+    .option('--relay <url>', 'Relay URL the token is for (default: TAPFLOW_RELAY_URL, else ws://localhost:4000)')
+    .action(async (subcommand: string, opts: { relay?: string }) => {
+      // A prompt nobody answers (a TTY with no one on the other end) never settles, and node exits when the loop
+      // empties; without this that exit is 0 with nothing stored. A normal return overwrites it.
+      process.exitCode = 1
+      if (subcommand === 'set') process.exitCode = await cmdTokenSet(opts)
+      else if (subcommand === 'status') process.exitCode = await cmdTokenStatus(opts)
+      else {
+        console.error(`Unknown subcommand: token ${subcommand} (expected: set | status)`)
+        process.exit(1)
+      }
     })
 
   cli

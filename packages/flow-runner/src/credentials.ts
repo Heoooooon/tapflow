@@ -158,16 +158,120 @@ export function tokenRefusal(source: TokenSource): string {
     case 'env': {
       const name = source.from === 'flag' ? '--token' : 'TAPFLOW_TOKEN'
       return `the relay at ${source.origin} did not accept the token from ${name} (unknown on this relay, revoked or expired): ` +
-        `pass one minted on this relay, or remove ${name} and ${store}`
+        `pass one minted on this relay, or remove ${name} and ${setIt(source.origin)} (or ${store})`
     }
     case 'file':
       return `the relay at ${source.origin} did not accept the token stored for it in ${source.path} ` +
-        '(unknown on this relay, revoked or expired): replace it there with one minted on this relay'
+        `(unknown on this relay, revoked or expired): ${setIt(source.origin)} with one minted on this relay, or replace it there`
     case 'none': {
       const others = readCredential(source.path, source.origin).origins
-      return `no token for the relay at ${source.origin}: ${store}` +
+      return `no token for the relay at ${source.origin}: ${setIt(source.origin)}, or ${store}` +
         (others.length > 0 ? ` (the file has tokens for ${others.join(', ')})` : '')
     }
+  }
+}
+
+/** The command that stores a token, for messages. The path stays beside it: an MCP-only machine has no CLI. */
+function setIt(origin: string): string {
+  return `run \`tapflow token set --relay ${origin}\``
+}
+
+/** A tapflow personal access token's shape (`api/tokens.ts`): checked before a token is sent anywhere. */
+export const PAT_PATTERN = /^tflw_pat_[0-9a-f]{64}$/
+
+/** Why the credentials file cannot be written as it is. Its message names the file and what to do. */
+export class CredentialFileError extends Error {}
+
+/** Every relay origin the file holds a token for, canonical, in file order. Unreadable or malformed: none. */
+export function listCredentials(file: string): string[] {
+  const parsed = readFileObject(file)
+  const relays = parsed && typeof parsed.relays === 'object' && parsed.relays !== null ? Object.keys(parsed.relays) : []
+  // Equivalent keys collapse to one origin: readers take the first match, so a second would only repeat it.
+  return [...new Set(relays.flatMap((k) => { try { return [originOf(k)] } catch { return [] } }))]
+}
+
+function readFileObject(file: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Stores `token` for `relayUrl`'s origin, keeping every other relay's entry and any top-level key it does not know.
+ *
+ * - **Every key that resolves to the same origin is replaced**, not only the canonical one: the reader takes the
+ *   first match, so a hand-written `ws://127.0.0.1:4000` left ahead of it would keep its old token in use.
+ * - **Written whole or not at all**: a temp file in the same directory (so the rename is atomic, never across
+ *   filesystems), created 0600, then renamed over the file. A reader never sees half a file. Two writers at once:
+ *   the later rename wins.
+ * - **Refused rather than repaired**: a file that is a symlink (a dotfiles tool may link it into a repository, one
+ *   `git add` from a commit), one owned by another user (a `sudo` run would leave a file the user's own clients
+ *   cannot read, which reads as "no token"), and one that is not a version-1 credentials file (a newer format would be
+ *   downgraded; a broken one is the person's to look at).
+ */
+export function writeCredential(file: string, relayUrl: string, token: string): { origin: string } {
+  const origin = originOf(relayUrl)
+  const dir = path.dirname(file)
+  let existing: Record<string, unknown> = { version: 1, relays: {} }
+  let stat: fs.Stats | null = null
+  try { stat = fs.lstatSync(file) } catch { /* no file yet */ }
+  if (stat) {
+    if (stat.isSymbolicLink()) throw new CredentialFileError(`${file} is a symlink; tapflow does not write through it. Point TAPFLOW_TOKEN_FILE at a regular file, or replace the link`)
+    if (!stat.isFile()) throw new CredentialFileError(`${file} is not a regular file`)
+    if (ownedByAnother(stat)) throw new CredentialFileError(`${file} belongs to another user, so tapflow will not write it (a file made with sudo cannot be read by your own clients)`)
+    const parsed = readFileObject(file)
+    if (!parsed) throw new CredentialFileError(`${file} is not valid JSON; fix or remove it, then run this again`)
+    if (parsed.version !== 1 || typeof parsed.relays !== 'object' || parsed.relays === null || Array.isArray(parsed.relays)) {
+      throw new CredentialFileError(`${file} is not a version 1 tapflow credentials file; this tapflow does not write it`)
+    }
+    existing = parsed
+  }
+  const relays: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(existing.relays as Record<string, unknown>)) {
+    let same = false
+    try { same = originOf(key) === origin } catch { /* a key that is not a URL is kept as it is */ }
+    if (!same) relays[key] = value
+  }
+  relays[origin] = { token }
+
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+  try {
+    const dirStat = fs.statSync(dir)
+    if (ownedByAnother(dirStat)) throw new CredentialFileError(`${dir} belongs to another user, so tapflow will not write there`)
+  } catch (e) {
+    if (e instanceof CredentialFileError) throw e
+  }
+  const temp = path.join(dir, `.${path.basename(file)}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`)
+  const fd = fs.openSync(temp, 'wx', 0o600)
+  try {
+    try {
+      // writeFileSync on an fd loops until every byte is out; a single writeSync may return short on a full disk.
+      fs.writeFileSync(fd, `${JSON.stringify({ ...existing, version: 1, relays }, null, 2)}\n`)
+    } finally {
+      fs.closeSync(fd)
+    }
+    renameOnce(temp, file)
+  } catch (e) {
+    fs.rmSync(temp, { force: true })
+    throw e
+  }
+  return { origin }
+}
+
+function ownedByAnother(stat: fs.Stats): boolean {
+  return typeof process.getuid === 'function' && stat.uid !== process.getuid()
+}
+
+/** Windows refuses a rename over a file another process has open (EPERM); one retry covers a reader in the way. */
+function renameOnce(from: string, to: string): void {
+  try {
+    fs.renameSync(from, to)
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'EPERM') throw e
+    fs.renameSync(from, to)
   }
 }
 
