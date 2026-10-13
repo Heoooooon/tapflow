@@ -50,7 +50,8 @@ While a run is in progress, the list and the run's page refresh every few second
 |--------|---------|
 | **Running** | In progress |
 | **Passed** | Every flow passed |
-| **Failed** | At least one flow failed. When every failure was an environment problem, the run's page says **Environment problem**; when the run failed before any flow started, it gives the reason. |
+| **Failed** | At least one flow failed on the app |
+| **Environment problem** | Every failure was the environment (the device, the agent or the relay), not the app. A run that failed before any flow started is shown here too, and its page gives the reason. Shown in gray rather than red so a regression stands out. The Status filter counts it under **Failed**. |
 | **Cancelled** | The run was cancelled (Ctrl+C, a cancelled CI job). A run whose runner disconnected before saying it was over is shown here too, and its page says so. |
 
 ## Recording runs (operator) {#recording}

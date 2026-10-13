@@ -15,7 +15,7 @@ import { useFocusAfterSwap } from '@/hooks/useFocusAfterSwap'
 import { listView } from '@/lib/list-view'
 import { getRuns, queryKeys, type RunCursor, type RunFilters } from '@/lib/queries'
 import {
-  RUN_STATUS_LABEL, RUN_STATUS_TONE, formatAgo, pollWhileRunning, runBuildLabel, runDuration, runSourceLabel,
+  RUN_STATUS_LABEL, failureBadge, formatAgo, pollWhileRunning, runBuildLabel, runDuration, runSourceLabel,
 } from '@/lib/runs'
 import type { RunListItem, RunStatus } from '@/lib/types'
 
@@ -238,6 +238,7 @@ function RunRow({ run }: { run: RunListItem }) {
   const navigate = useNavigate()
   const href = `/automation/runs/${run.id}`
   const build = runBuildLabel(run.build)
+  const badge = failureBadge(run.status, run.failureKind)
   return (
     // **The whole row opens the run**, as a CI run list does, and the build name is the one link in it: a mouse
     // gets the row, a keyboard or a screen reader gets one stop per row with a name that says which run. A click
@@ -254,14 +255,14 @@ function RunRow({ run }: { run: RunListItem }) {
       }}
     >
       <TableCell>
-        <Badge tone={RUN_STATUS_TONE[run.status]} className="text-xs">{RUN_STATUS_LABEL[run.status]}</Badge>
+        <Badge tone={badge.tone} className="text-xs">{badge.label}</Badge>
       </TableCell>
       <TableCell className="text-sm">
         {/* The visible name first, so voice control can say what it reads. */}
         <Link
           to={href}
           className="rounded-sm font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`${build}, ${RUN_STATUS_LABEL[run.status]}, ${formatAgo(run.createdAt)}`}
+          aria-label={`${build}, ${badge.label}, ${formatAgo(run.createdAt)}`}
         >
           {build}
         </Link>

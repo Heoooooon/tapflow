@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { Runs } from '@/src/pages/Runs'
 import { RunDetail } from '@/src/pages/RunDetail'
-import { pollWhileRunning, runOutcomeText, runSourceLabel, RUNS_POLL_MS } from '@/lib/runs'
+import { failureBadge, pollWhileRunning, runOutcomeText, runSourceLabel, RUNS_POLL_MS } from '@/lib/runs'
 import type { RunDetail as Run, RunListItem } from '@/lib/types'
 import { withQuery } from './withQuery'
 
@@ -62,6 +62,20 @@ describe('Runs list', () => {
     expect(urls[0]).toBe('/api/v1/runs?ci=1&limit=25')
     expect(screen.getByText('GitHub Actions · main')).toBeTruthy()
     expect(link.closest('tr')?.textContent).toContain('2/2')
+  })
+
+  it('tells a run the environment failed apart from one the app failed, in the row and its name', async () => {
+    stubRelay(() => Response.json({
+      items: [
+        listItem({ id: 'r1', status: 'failed', failureKind: 'product', exitCode: 1 }),
+        listItem({ id: 'r2', status: 'failed', failureKind: 'environment', exitCode: 2, build: { id: 8, appName: 'Tea', versionName: '2.0.0', buildNumber: '9', platform: 'android' } }),
+      ],
+      nextCursor: null, prevCursor: null,
+    }))
+    renderAt('/automation/runs')
+    expect(await screen.findByRole('link', { name: /^Coffee 1\.2\.0 · build 42, Failed, / })).toBeTruthy()
+    const env = screen.getByRole('link', { name: /^Tea 2\.0\.0 · build 9, Environment problem, / })
+    expect(env.closest('tr')?.textContent).toContain('Environment problem')
   })
 
   it('opens a run from anywhere on its row, and in a new tab with Cmd', async () => {
@@ -268,6 +282,18 @@ describe('Run detail', () => {
     expect(screen.getByRole('link', { name: /Open the CI run/ }).getAttribute('href')).toBe('https://github.com/o/r/actions/runs/1')
   })
 
+  it('marks a run and a flow that failed only on the environment as such, not as the app failing', async () => {
+    stubRelay(() => Response.json(detail({
+      status: 'failed', exitCode: 2, failureKind: 'environment', errorMessage: 'no booted device',
+      flows: [{ idx: 0, name: 'login', file: null, status: 'failed', device: null, failureKind: 'environment', failureMessage: 'agent went away', durationMs: 300, steps: [], hasScreenshot: false }],
+    })))
+    renderAt('/automation/runs/r1')
+    await screen.findByText('agent went away')
+    // One for the run, one for its flow; neither says Failed.
+    expect(screen.getAllByText('Environment problem')).toHaveLength(2)
+    expect(screen.queryByText('Failed')).toBeNull()
+  })
+
   it('shows the screen a passed flow ended on, as its evidence', async () => {
     stubRelay(() => Response.json(detail({
       flows: [{ idx: 0, name: 'login', file: null, status: 'passed', device: null, failureKind: null, failureMessage: null, durationMs: 1200, steps: [], hasScreenshot: true }],
@@ -289,6 +315,15 @@ describe('run wording and polling', () => {
     expect(pollWhileRunning(['passed', 'running'])).toBe(RUNS_POLL_MS)
     expect(pollWhileRunning(['passed', 'failed', 'aborted'])).toBe(false)
     expect(pollWhileRunning(undefined)).toBe(false)
+  })
+
+  it('draws only an app failure red', () => {
+    expect(failureBadge('failed', 'product')).toEqual({ label: 'Failed', tone: 'rejected' })
+    expect(failureBadge('failed', null)).toEqual({ label: 'Failed', tone: 'rejected' })
+    expect(failureBadge('failed', 'environment')).toEqual({ label: 'Environment problem', tone: 'backlog' })
+    // The relay writes failure_kind 'holder-lost' on a run it closes; that run is aborted, and stays Cancelled.
+    expect(failureBadge('aborted', 'holder-lost')).toEqual({ label: 'Cancelled', tone: 'backlog' })
+    expect(failureBadge('passed', null)).toEqual({ label: 'Passed', tone: 'done' })
   })
 
   it('keeps a cancel, a disconnect, an environment failure and a regression apart', () => {

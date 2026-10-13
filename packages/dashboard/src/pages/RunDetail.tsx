@@ -8,7 +8,7 @@ import { TechLabel } from '@/components/ui/tech-label'
 import { useBreadcrumb } from '@/hooks/useBreadcrumb'
 import { getRun, queryKeys, runScreenshotUrl } from '@/lib/queries'
 import {
-  RUN_STATUS_LABEL, RUN_STATUS_TONE, UNREPORTED_FLOW_LABEL, formatAgo, formatDuration, runBuildLabel,
+  UNREPORTED_FLOW_LABEL, failureBadge, formatAgo, formatDuration, runBuildLabel,
   pollWhileRunning, runDuration, runOutcomeText, runSourceLabel, shortCommit,
 } from '@/lib/runs'
 import type { RunDetail as Run, RunFlow } from '@/lib/types'
@@ -59,6 +59,7 @@ export function RunDetail() {
 
 function RunBody({ run }: { run: Run }) {
   const outcome = runOutcomeText(run)
+  const badge = failureBadge(run.status, run.failureKind)
   return (
     <>
       {/* Grouped by what each part answers: which run and how it ended, where it came from, why, what to do. */}
@@ -66,7 +67,7 @@ function RunBody({ run }: { run: Run }) {
         <div className="flex flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold tracking-tight">{runBuildLabel(run.build)}</h1>
-            <Badge tone={RUN_STATUS_TONE[run.status]} className="text-xs">{RUN_STATUS_LABEL[run.status]}</Badge>
+            <Badge tone={badge.tone} className="text-xs">{badge.label}</Badge>
           </div>
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
             <span>{runSourceLabel(run)}</span>
@@ -115,6 +116,7 @@ function isReported(flow: RunFlow): flow is ReportedFlow {
 }
 
 function FlowItem({ runId, flow }: { runId: string; flow: RunFlow }) {
+  const badge = isReported(flow) ? failureBadge(flow.status, flow.failureKind) : null
   return (
     // Each kind of content is its own group — what the flow is, why it failed, its steps, its screen, its video — with
     // more room between groups than inside one, so the card reads as those parts.
@@ -124,9 +126,7 @@ function FlowItem({ runId, flow }: { runId: string; flow: RunFlow }) {
           <span className="text-sm font-medium">{flow.name}</span>
           {isReported(flow) ? (
             <>
-              <Badge tone={flow.status === 'passed' ? 'done' : 'rejected'} className="text-xs">
-                {flow.status === 'passed' ? 'Passed' : flow.failureKind === 'environment' ? 'Environment problem' : 'Failed'}
-              </Badge>
+              <Badge tone={badge?.tone} className="text-xs">{badge?.label}</Badge>
               <TechLabel className="text-muted-foreground">{formatDuration(flow.durationMs)}</TechLabel>
               {flow.device?.name && <span className="text-xs text-muted-foreground">{flow.device.name}</span>}
             </>
