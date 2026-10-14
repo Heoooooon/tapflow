@@ -1227,7 +1227,10 @@ export class RelayServer {
         // **Not gated on the holder.** Watchers keep receiving frames while the holder is away inside its
         // reconnect grace, which is when `browserSocket` is null.
         const watchers = this.sessions.watchersOf(session.id)
-        if (!session.browserSocket && watchers.length === 0) return
+        // A holder that said it does not read the stream (`stream: false`) is sent nothing: the MCP server and a
+        // runner that is not recording discard every frame, and an iOS session is ~34 Mbit/s of JPEG to do it with.
+        const holder = session.holderStream ? session.browserSocket : null
+        if (!holder && watchers.length === 0) return
         const frameBuf = data as Buffer
         // Audio rides the same socket (codec-tagged). Route it through a sender that YIELDS to
         // video — it drops audio unless the socket is near-empty, so audio never inflates
@@ -1237,14 +1240,14 @@ export class RelayServer {
         // **The holder's alone.** A watch page has no audio control, and audio a teammate did not ask
         // to hear should not start playing in their tab.
         if (hasEnvelope(frameBuf) && readEnvelopeFlags(frameBuf).codec === CODEC_AUDIO) {
-          if (!session.browserSocket) return
+          if (!holder) return
           patchRelayedAt(frameBuf, Date.now())
           let onAudioDrop = this.audioDropHandlers.get(session.id)
           if (!onAudioDrop) {
             onAudioDrop = createRateLimitedDropWarn(logger, `${session.id} audio`)
             this.audioDropHandlers.set(session.id, onAudioDrop)
           }
-          sendAudioYieldingToVideo(session.browserSocket, frameBuf, onAudioDrop)
+          sendAudioYieldingToVideo(holder, frameBuf, onAudioDrop)
           return
         }
         let onDrop = this.dropHandlers.get(session.id)
@@ -1261,13 +1264,13 @@ export class RelayServer {
           const flags = readEnvelopeFlags(frameBuf)
           isKeyframe = flags.codec === CODEC_JPEG || flags.keyframe
         }
-        if (session.browserSocket) {
+        if (holder) {
           let dropper = this.droppers.get(session.id)
           if (!dropper) {
             dropper = createKeyframeAwareSender()
             this.droppers.set(session.id, dropper)
           }
-          dropper.send(session.browserSocket, frameBuf, this.backpressureBytes, isKeyframe, onDrop, requestIdr)
+          dropper.send(holder, frameBuf, this.backpressureBytes, isKeyframe, onDrop, requestIdr)
         }
         // **No IDR request on a watcher's drop**, and its own drop warning. An IDR changes the encoder's
         // output for everyone, so a watcher on a slow link asking for one on every drain would cost the
@@ -2425,7 +2428,8 @@ export class RelayServer {
     try {
       const joined = this.sessions.join(
         msg.sessionId, ws, this.ownerRecord(ws), (h) => this.isAlive(h),
-        { kind: msg.clientKind, label: this.holderLabel(ws) },
+        // Recorded by the join itself, so it holds before the agent-away return below and across a rebind.
+        { kind: msg.clientKind, label: this.holderLabel(ws), ...(msg.stream === false ? { stream: false } : {}) },
       )
       if (!joined.ok) {
         // Both of these are answered above, so arriving here means the state moved between that check and
@@ -2501,7 +2505,9 @@ export class RelayServer {
       // the P-frames around it, so the amplification lands on the tester who is actually watching. The
       // backpressure path already throttles this exact message per session; sharing that requester is
       // what keeps the two callers from having two policies.
-      this.idrRequester(session.id)()
+      // Not for a holder that takes no frames: the keyframe would go to watchers alone, and it would spend the
+      // throttle window a watcher's own `watch:start` request needs.
+      if (session.holderStream) this.idrRequester(session.id)()
       // And ask what the device's network is doing (#614). `NetworkState` is agent-produced and is not
       // among the three replayed above, so without this a viewer that reconnects has no way to learn
       // whether the device is offline and its control renders in a guessed position.

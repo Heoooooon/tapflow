@@ -113,6 +113,8 @@ const BROWSER_INBOUND = {
   'session:start': z.object({
     type: z.literal('session:start'), sessionId,
     clientKind: z.union([z.enum(['dashboard', 'mcp', 'flow-runner']), z.string().transform(() => undefined)]).optional(),
+    // Same reasoning as `clientKind`: a value this relay does not know drops the field, never the join.
+    stream: z.union([z.boolean(), z.unknown().transform(() => undefined)]).optional(),
   }),
   'watch:start': z.object({ type: z.literal('watch:start'), sessionId }),
   'watch:stop': z.object({ type: z.literal('watch:stop'), sessionId }),

@@ -692,7 +692,8 @@ export class RelayClient {
 
   /** @returns where a person can watch this run in the dashboard — see `watchUrlFor`. */
   async joinSession(sessionId: string): Promise<{ watchUrl: string }> {
-    this.sendFirstRequest({ type: 'session:start', sessionId, clientKind: 'flow-runner' })
+    // No listener, no frames: a runner that is not recording discards every one, and the relay need not send them.
+    this.sendFirstRequest({ type: 'session:start', sessionId, clientKind: 'flow-runner', ...(this.streamListener ? {} : { stream: false }) })
     const msg = await this.waitFor(
       (m) =>
         (m['type'] === 'session:joined' && m['sessionId'] === sessionId) ||
@@ -742,7 +743,8 @@ export class RelayClient {
 
   /**
    * Hands every frame of the held session, and its chrome and device info, to `listener` — or stops, with null.
-   * The relay forwards the stream to the holder whether anyone reads it or not.
+   * **Set it before `joinSession`**: a join with no listener asks the relay for no frames (`stream: false`), so a
+   * listener set after that receives the chrome and device info but no frame.
    */
   setStreamListener(listener: StreamListener | null): void {
     this.streamListener = listener

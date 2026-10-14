@@ -171,6 +171,67 @@ describe('session watchers', () => {
     expect(viewer.binary).toHaveLength(0)
   })
 
+  // X1: a holder that does not read the stream asks for none (`stream: false`), and watchers are unaffected.
+  async function joinWithoutStream(ws: WebSocket, sessionId: string, clientKind: 'mcp' | 'flow-runner' = 'mcp') {
+    ws.send(JSON.stringify({ type: 'session:start', sessionId, clientKind, stream: false }))
+    return waitForType<SessionJoined>(ws, 'session:joined')
+  }
+
+  it('sends a holder that asked for no stream neither video nor audio, and its watcher both as before', async () => {
+    const { stream, sessionId } = await registerAgent()
+    const mcp = await socket('mcp1')
+    await joinWithoutStream(mcp, sessionId)
+    const viewer = await socket(undefined, 1)
+    await watch(viewer, sessionId)
+    await frame(stream, jpeg(), viewer)
+    stream.send(writeEnvelopeHeader(Buffer.alloc(64), Date.now(), { codec: CODEC_AUDIO }))
+    await barrier(stream)
+    await settle(mcp, viewer)
+    expect(mcp.binary).toHaveLength(0)
+    expect(viewer.binary).toHaveLength(1)
+  })
+
+  it('sends the stream again once the holder re-joins without the flag', async () => {
+    const { stream, sessionId } = await registerAgent()
+    const mcp = await socket('mcp1')
+    await joinWithoutStream(mcp, sessionId)
+    await join(mcp, sessionId, 'mcp')
+    await frame(stream, jpeg(), mcp)
+    expect(mcp.binary).toHaveLength(1)
+  })
+
+  it('keeps the holder off the stream across an agent restart', async () => {
+    const first = await registerAgent()
+    const mcp = await socket('mcp1')
+    await joinWithoutStream(mcp, first.sessionId)
+    const viewer = await socket(undefined, 1)
+    await watch(viewer, first.sessionId)
+    first.agent.close()
+    await waitForType(mcp, 'session:agent-away')
+    const second = await registerAgent()
+    expect(second.sessionId).toBe(first.sessionId)
+    await frame(second.stream, jpeg(), viewer)
+    await settle(mcp)
+    expect(mcp.binary).toHaveLength(0)
+  })
+
+  it('asks the agent for no keyframe when a holder that takes no stream joins a live device', async () => {
+    const { agent, sessionId, fromAgent } = await registerAgent()
+    agent.send(JSON.stringify({ type: 'device:ready', sessionId, payload: { deviceId: 'dev0' } }))
+    await barrier(agent)
+    const mcp = await socket('mcp1')
+    await joinWithoutStream(mcp, sessionId)
+    await barrier(mcp)
+    await barrier(agent)
+    expect(fromAgent.filter((m) => m['type'] === 'stream:request-idr')).toHaveLength(0)
+    const other = await socket('mcp2')
+    mcp.close()
+    await new Promise((r) => mcp.once('close', r))
+    await join(other, sessionId, 'mcp')
+    await barrier(agent)
+    expect(fromAgent.filter((m) => m['type'] === 'stream:request-idr').length).toBeGreaterThan(0)
+  })
+
   it('refuses a watcher\'s input, and nothing reaches the agent', async () => {
     const { sessionId, agent, fromAgent } = await registerAgent()
     const mcp = await socket('mcp1')
