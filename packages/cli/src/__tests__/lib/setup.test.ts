@@ -680,6 +680,48 @@ describe('runSetupIos', () => {
     expect(findStep(results, 'xcode ready')?.ok).toBe(true)
   })
 
+  it('accepts a selected Xcode under a versioned name without asking for sudo', async () => {
+    setTTY(true)
+    mockExistsSync.mockImplementation((p) =>
+      String(p).startsWith('/Applications/Xcode-27.0.0.app') || String(p).includes('TapflowNetFilter.app') || p === FILTER_STATE_FILE)
+    mockExecSync.mockImplementation((cmd) => {
+      const c = cmd as string
+      if (c === 'which brew') return '/opt/homebrew/bin/brew\n'
+      if (c === 'xcode-select -p') return '/Applications/Xcode-27.0.0.app/Contents/Developer\n'
+      if (c === 'xcodebuild -version') return 'Xcode 27.0\n'
+      if (c.includes('simctl list devices')) return simctlBooted
+      return ''
+    })
+
+    const results = await runSetupIos()
+    expect(findStep(results, 'xcode installed')?.ok).toBe(true)
+    expect(findStep(results, 'xcode ready')).toMatchObject({ ok: true, state: 'found' })
+    expect(mockSpawnSync).not.toHaveBeenCalledWith('sudo', expect.arrayContaining(['xcode-select']), expect.anything())
+  })
+
+  it('selects a versioned Xcode when only the Command Line Tools are selected', async () => {
+    setTTY(true)
+    mockConfirm.mockResolvedValue(true as never)
+    mockExistsSync.mockImplementation((p) =>
+      String(p).startsWith('/Applications/Xcode-27.0.0.app') || String(p).includes('TapflowNetFilter.app') || p === FILTER_STATE_FILE)
+    mockReaddirSync.mockImplementation(((dir: string) => (dir === '/Applications' ? ['Xcode-27.0.0.app'] : [])) as never)
+    mockExecSync.mockImplementation((cmd) => {
+      const c = cmd as string
+      if (c === 'which brew') return '/opt/homebrew/bin/brew\n'
+      if (c === 'xcode-select -p') return '/Library/Developer/CommandLineTools\n'
+      if (c === 'xcodebuild -version') return 'Xcode 27.0\n'
+      if (c.includes('simctl list devices')) return simctlBooted
+      return ''
+    })
+
+    await runSetupIos()
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      'sudo',
+      ['xcode-select', '-s', '/Applications/Xcode-27.0.0.app/Contents/Developer'],
+      expect.anything(),
+    )
+  })
+
   it('시뮬 디바이스 없음 + TTY + 수락 시 xcodebuild -downloadPlatform 실행', async () => {
     setTTY(true)
     mockConfirm.mockResolvedValue(true as never)

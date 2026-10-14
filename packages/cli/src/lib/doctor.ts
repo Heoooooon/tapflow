@@ -7,6 +7,7 @@ import { LeanStore } from '@tapflowio/ios-agent'
 import {
   isFilterEnforcing, isNetFilterCurrent, isNewer, readNetFilterState, removalSteps, shippedHookPath,
 } from './net-filter.js'
+import { findXcodeApp } from './xcode.js'
 
 /**
  * How long any one probe may take before `doctor` treats it as unanswerable.
@@ -52,7 +53,8 @@ function buildIosChecks(isMac: boolean, lean: boolean): DoctorCheck[] {
   // **넷필터 체크는 이 조기 반환에도 붙는다.** 확장은 Xcode와 무관하게 설치·활성될 수 있고, 이 경로가
   // 체크를 빠뜨리면 Xcode 없는 맥에서는 넷필터 상태를 물어볼 방법이 아예 없다. 설계 리뷰가 "체크
   // 추가는 배열에 객체를 넣는 일"이라는 전제를 반환 경로가 셋이라는 사실로 반박했다.
-  if (!existsSync('/Applications/Xcode.app')) {
+  const xcodeApp = findXcodeApp()
+  if (!xcodeApp) {
     return [
       {
         label: 'Xcode',
@@ -72,7 +74,7 @@ function buildIosChecks(isMac: boolean, lean: boolean): DoctorCheck[] {
   }
   // Read once and shared: both checks below need the list, and each read is an `xcrun` round trip.
   const simulators = listSimulators()
-  return [checkXcode(), checkSimctl(), checkBootedSimulator(simulators), ...buildNetFilterChecks(), checkNetworkHook(), checkHookSymbols(), checkLeanMode(lean, simulators)]
+  return [checkXcode(xcodeApp), checkSimctl(), checkBootedSimulator(simulators), ...buildNetFilterChecks(), checkNetworkHook(), checkHookSymbols(), checkLeanMode(lean, simulators)]
 }
 
 /**
@@ -425,23 +427,16 @@ function checkAdbStatus(adb: AdbResolution | null): DoctorCheck {
   }
 }
 
-function checkXcode(): DoctorCheck {
+function checkXcode(xcodeApp: string): DoctorCheck {
   try {
     const out = execSync('xcodebuild -version', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: PROBE_TIMEOUT_MS })
     const version = out.split('\n')[0]?.replace('Xcode ', '') ?? ''
     return { label: `Xcode ${version}`, ok: true }
   } catch {
-    if (existsSync('/Applications/Xcode.app')) {
-      return {
-        label: 'Xcode',
-        ok: false,
-        detail: 'Xcode is installed but xcode-select is not configured. Run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer',
-      }
-    }
     return {
       label: 'Xcode',
       ok: false,
-      detail: 'Install Xcode from https://developer.apple.com/xcode/ or the Mac App Store.',
+      detail: `Xcode is installed but xcode-select is not configured. Run: sudo xcode-select -s ${xcodeApp}/Contents/Developer`,
     }
   }
 }

@@ -245,6 +245,40 @@ describe('runDoctorChecks', () => {
     expect(xcodeCheck?.detail).toContain('xcode-select -s')
   })
 
+  it('finds an Xcode installed under a versioned name, as xcodes installs it', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+    mockExistsSync.mockImplementation((p) => String(p).startsWith('/Applications/Xcode-27.0.0.app'))
+    mockExecSync.mockImplementation((cmd) => {
+      const c = cmd as string
+      if (c === 'xcode-select -p') return '/Applications/Xcode-27.0.0.app/Contents/Developer\n'
+      if (c === 'xcodebuild -version') return 'Xcode 27.0\n'
+      if (c.startsWith('xcrun simctl')) return simctlBooted
+      if (c === 'which adb') throw new Error('not found')
+      return ''
+    })
+
+    const result = await runDoctorChecks()
+    expect(result.ios?.find((c) => c.label.startsWith('Xcode'))).toMatchObject({ label: 'Xcode 27.0', ok: true })
+  })
+
+  it('names the versioned bundle in the xcode-select hint when it is not selected', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+    mockExistsSync.mockImplementation((p) => String(p).startsWith('/Applications/Xcode-27.0.0.app'))
+    mockReaddirSync.mockReturnValue(['Xcode-27.0.0.app'] as never)
+    mockExecSync.mockImplementation((cmd) => {
+      const c = cmd as string
+      if (c === 'xcode-select -p') return '/Library/Developer/CommandLineTools\n'
+      if (c === 'xcodebuild -version') throw new Error('requires Xcode')
+      if (c.startsWith('xcrun simctl')) return simctlBooted
+      if (c === 'which adb') throw new Error('not found')
+      return ''
+    })
+
+    const result = await runDoctorChecks()
+    const xcodeCheck = result.ios?.find((c) => c.label === 'Xcode')
+    expect(xcodeCheck?.detail).toContain('sudo xcode-select -s /Applications/Xcode-27.0.0.app/Contents/Developer')
+  })
+
   it('adb가 PATH엔 없지만 표준 SDK 위치에 있으면 not-in-PATH 진단', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
     vi.stubEnv('ANDROID_HOME', '')
