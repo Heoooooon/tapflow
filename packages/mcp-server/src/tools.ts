@@ -140,6 +140,11 @@ function getImageDimensions(buf: Buffer, format: string): { width: number; heigh
 
 type ToolResult = { content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>; isError?: boolean }
 
+const RUNS_LIMIT = 50
+const RUN_SCREENSHOTS_MAX = 4
+/** Raw bytes across get_run's images, about 5.3 MB once base64'd. */
+const RUN_SCREENSHOT_BYTES = 4 * 1024 * 1024
+
 function ok(text: string): ToolResult {
   return { content: [{ type: 'text', text }] }
 }
@@ -172,6 +177,96 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
         return ok(JSON.stringify(apps, null, 2))
       } catch (e) {
         return err(`list_builds failed: ${(e as Error).message}`)
+      }
+    },
+  )
+
+  register(
+    'list_runs',
+    {
+      description:
+        'List the flow runs `tapflow flow run` recorded on the relay (CI and local), newest first. Use it to find a failed ' +
+        'run, then get_run to see why. When nextCursor is not null, pass it as "before" for the older runs. Read-only.',
+      inputSchema: {
+        status: z.enum(['running', 'passed', 'failed', 'aborted']).optional().describe('Only runs that ended this way ("aborted" is a cancelled run)'),
+        buildId: z.number().int().optional().describe('Only runs of this build (from list_builds)'),
+        flow: z.string().optional().describe('Only runs with a flow whose name contains this'),
+        ci: z.boolean().optional().describe('true for CI runs only, false for local runs only'),
+        limit: z.number().int().optional().describe(`How many (default 10, at most ${RUNS_LIMIT})`),
+        before: z.string().optional().describe('nextCursor from an earlier list_runs, for the runs older than that page'),
+      },
+    },
+    async ({ status, buildId, flow, ci, limit, before }) => {
+      try {
+        const page = await client.listRuns({ status, buildId, flow, ci, limit: limit ?? 10, before })
+        return ok(JSON.stringify(page, null, 2))
+      } catch (e) {
+        return err(`list_runs failed: ${(e as Error).message}`)
+      }
+    },
+  )
+
+  register(
+    'get_run',
+    {
+      description:
+        'Read one recorded flow run: each failed flow\'s steps (a passed flow\'s step count, stepCount), failure message, whether the failure was the app ("product") or ' +
+        'the environment, and the flow file\'s path. Screenshots of up to four failed flows come back as images (4 MB in all; one that is missing or over that is ' +
+        'named in the text instead). A ' +
+        'file path is as the runner was given it, relative to the directory it ran in (the CI job\'s, for a CI run), so ' +
+        'find that file in your checkout before editing it; then replay it with run_flow. Read-only.',
+      inputSchema: {
+        runId: z.string().describe('Run id from list_runs'),
+      },
+    },
+    async ({ runId }) => {
+      try {
+        const run = await client.getRun(runId)
+        // A passed flow's steps are only counted: a suite of twenty flows with thirty steps each would otherwise be
+        // tens of KB, and the failed flow an agent came for would sit at the end of it, where a client cuts. Compact
+        // JSON for the same reason.
+        const brief = {
+          ...run,
+          flows: run.flows.map(({ steps, ...f }) => (f.status === 'passed' ? { ...f, stepCount: steps?.length ?? 0 } : { ...f, ...(steps ? { steps } : {}) })),
+        }
+        const content: ToolResult['content'] = [{ type: 'text', text: JSON.stringify(brief) }]
+        // Only failed flows: a passed flow's last screen is evidence for a person, and would only make the answer
+        // larger here. Capped by count and by bytes, since each image is a screen's worth of tokens and a client may
+        // refuse a whole answer over one large image.
+        const failed = run.flows.filter((f) => f.status === 'failed' && f.hasScreenshot)
+        let bytes = 0
+        let attached = 0
+        let tried = 0
+        // Counted by images attached, not candidates: a screenshot that is gone does not use up a place.
+        for (const f of failed) {
+          if (attached === RUN_SCREENSHOTS_MAX) break
+          tried++
+          // One screenshot that cannot be read costs that screenshot, not the record already in hand.
+          let shot: Awaited<ReturnType<typeof client.runScreenshot>>
+          try {
+            shot = await client.runScreenshot(run.id, f.idx)
+          } catch (e) {
+            content.push({ type: 'text', text: `Could not read the screenshot of ${f.name} (flow ${f.idx}): ${(e as Error).message}` })
+            continue
+          }
+          if (shot && bytes + shot.data.length > RUN_SCREENSHOT_BYTES) {
+            content.push({ type: 'text', text: `The screenshot of ${f.name} (flow ${f.idx}) is left out to keep this answer small; open the run's page (url) to see it.` })
+            continue
+          }
+          if (shot) bytes += shot.data.length
+          if (!shot) {
+            content.push({ type: 'text', text: `There is no screenshot of ${f.name} (flow ${f.idx}) on the relay any more.` })
+            continue
+          }
+          content.push({ type: 'text', text: `Screenshot of ${f.name} (flow ${f.idx}), where it failed:` })
+          content.push({ type: 'image', data: shot.data.toString('base64'), mimeType: shot.mimeType })
+          attached++
+        }
+        const left = failed.length - tried
+        if (left > 0) content.push({ type: 'text', text: `${left} more failed flows have a screenshot; open the run's page (url) to see them.` })
+        return { content }
+      } catch (e) {
+        return err(`get_run failed: ${(e as Error).message}`)
       }
     },
   )

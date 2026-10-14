@@ -33,6 +33,71 @@ export interface AppInfo {
   builds: BuildInfo[]
 }
 
+/**
+ * A run record as `list_runs` gives it (B3): enough to pick the run to read, nothing the dashboard alone uses. The
+ * relay's own shape is `GET /api/v1/runs` in relay `api/runs.ts`.
+ */
+export interface RunInfo {
+  id: string
+  status: string
+  failureKind: string | null
+  errorMessage: string | null
+  exitCode: number | null
+  build: string | null
+  buildId: number | null
+  ci: { branch: string | null; commit: string | null; jobUrl: string | null } | null
+  flows: { passed: number; failed: number; total: number }
+  createdAt: string
+  finishedAt: string | null
+  /** The run's dashboard page, for the person the agent works for. */
+  url: string
+}
+
+export interface RunFlowInfo {
+  idx: number
+  name: string
+  file: string | null
+  status: string
+  failureKind?: string | null
+  failureMessage?: string | null
+  durationMs?: number
+  device?: { name: string | null; platform: string | null } | null
+  steps?: unknown[]
+  hasScreenshot?: boolean
+}
+
+export interface RunDetailInfo extends Omit<RunInfo, 'flows'> {
+  flows: RunFlowInfo[]
+}
+
+export interface RunFilter {
+  status?: string
+  buildId?: number
+  flow?: string
+  ci?: boolean
+  limit?: number
+  /** `nextCursor` from an earlier page: the runs older than it. */
+  before?: string
+}
+
+const RUNS_LIMIT_MAX = 50
+
+/** `GET /api/v1/runs` items and `/runs/:id`, as far as these read them. */
+interface RawRun {
+  id: string
+  status: string
+  failureKind: string | null
+  errorMessage: string | null
+  exitCode: number | null
+  ci: { branch: string | null; commit: string | null; jobUrl: string | null } | null
+  build: { id: number; appName: string | null; versionName: string | null; buildNumber: string | null } | null
+  flowsTotal: number
+  flowsPassed?: number
+  flowsFailed?: number
+  createdAt: string
+  finishedAt: string | null
+}
+
 // One node of `ui:tree:response`. This used to be a hand-written mirror of `agent-core`'s `UIElement`,
 // with a comment saying so — the drift `@tapflowio/protocol` exists to remove. L4a moved the type into
 // protocol (a leaf both this package and the agents can reach) and this re-export is what is left.
@@ -1193,6 +1258,97 @@ export class TapflowClient {
       throw new EnvironmentStepError(`UI tree query failed: ${cause.message}`, { cause })
     }
     return body.elements
+  }
+
+  /** Run records `tapflow flow run` left on the relay, newest first (B3). Read-only. */
+  async listRuns(filter: RunFilter): Promise<{ runs: RunInfo[]; nextCursor: string | null }> {
+    const url = new URL('/api/v1/runs', this.httpBase())
+    if (filter.status) url.searchParams.set('status', filter.status)
+    if (filter.buildId !== undefined) url.searchParams.set('build', String(filter.buildId))
+    if (filter.flow) url.searchParams.set('flow', filter.flow)
+    if (filter.ci !== undefined) url.searchParams.set('ci', filter.ci ? '1' : '0')
+    url.searchParams.set('limit', String(Math.min(Math.max(1, Math.floor(filter.limit ?? 10)), RUNS_LIMIT_MAX)))
+    if (filter.before) url.searchParams.set('before', filter.before)
+    const res = await fetchWithToken(this.tokens, url.toString(), {})
+    if (!res.ok) throw this.restRefusal('runs', res.status)
+    const body = (await res.json()) as { items?: RawRun[]; nextCursor?: string | null }
+    // The cursor goes back out: without it an agent can reach only the newest page of what matches.
+    const runs = (body.items ?? []).map((r) => ({
+      ...this.runHead(r),
+      flows: { passed: r.flowsPassed ?? 0, failed: r.flowsFailed ?? 0, total: r.flowsTotal },
+      createdAt: r.createdAt,
+      finishedAt: r.finishedAt,
+    }))
+    return { runs, nextCursor: body.nextCursor ?? null }
+  }
+
+  /** One run record with each flow's steps and failure, without the fields only the dashboard reads (B3). */
+  async getRun(runId: string): Promise<RunDetailInfo> {
+    const res = await fetchWithToken(this.tokens, this.runPath(runId), {})
+    if (res.status === 404) throw new Error(`no run with id "${runId}" on this relay`)
+    if (!res.ok) throw this.restRefusal('the run', res.status)
+    const r = (await res.json()) as RawRun & { flows?: Array<Record<string, unknown>> }
+    return {
+      ...this.runHead(r),
+      createdAt: r.createdAt,
+      finishedAt: r.finishedAt,
+      // Listed field by field: the relay's flow also carries `video`, and the run `watchSessionId`, which mean
+      // nothing to an agent reading what happened.
+      flows: (r.flows ?? []).map((f) => {
+        const device = f['device'] as { name?: string | null; platform?: string | null } | null | undefined
+        return {
+          idx: f['idx'] as number,
+          name: f['name'] as string,
+          file: (f['file'] as string | null) ?? null,
+          status: f['status'] as string,
+          ...('failureKind' in f ? { failureKind: f['failureKind'] as string | null } : {}),
+          ...('failureMessage' in f ? { failureMessage: f['failureMessage'] as string | null } : {}),
+          ...('durationMs' in f ? { durationMs: f['durationMs'] as number } : {}),
+          ...('device' in f ? { device: device ? { name: device.name ?? null, platform: device.platform ?? null } : null } : {}),
+          ...('steps' in f ? { steps: f['steps'] as unknown[] } : {}),
+          ...('hasScreenshot' in f ? { hasScreenshot: f['hasScreenshot'] as boolean } : {}),
+        }
+      }),
+    }
+  }
+
+  /** The screen a flow of a run was on when it failed or ended, or null when the relay has none (never sent, removed). */
+  async runScreenshot(runId: string, idx: number): Promise<{ data: Buffer; mimeType: string } | null> {
+    const res = await fetchWithToken(this.tokens, `${this.runPath(runId)}/flows/${idx}/screenshot`, {})
+    if (res.status === 404) return null
+    if (!res.ok) throw this.restRefusal('the screenshot', res.status)
+    return { data: Buffer.from(await res.arrayBuffer()), mimeType: res.headers.get('content-type') ?? 'image/png' }
+  }
+
+  private httpBase(): string {
+    return this.relayUrl.replace(/^wss?/, (p) => (p === 'wss' ? 'https' : 'http'))
+  }
+
+  private runPath(runId: string): string {
+    return new URL(`/api/v1/runs/${encodeURIComponent(runId)}`, this.httpBase()).toString()
+  }
+
+  private restRefusal(what: string, status: number): Error {
+    return new Error(status === 401 ? `Failed to fetch ${what}: ${tokenRefusal(this.tokens)}` : `Failed to fetch ${what}: ${status}`)
+  }
+
+  private runHead(r: RawRun): Omit<RunInfo, 'flows' | 'createdAt' | 'finishedAt'> {
+    const b = r.build
+    return {
+      id: r.id,
+      status: r.status,
+      failureKind: r.failureKind,
+      errorMessage: r.errorMessage,
+      exitCode: r.exitCode,
+      build: b ? [b.appName, b.versionName, b.buildNumber ? `(${b.buildNumber})` : null].filter(Boolean).join(' ') || `build ${b.id}` : null,
+      buildId: b?.id ?? null,
+      ci: r.ci ? { branch: r.ci.branch, commit: r.ci.commit, jobUrl: r.ci.jobUrl } : null,
+      // Built from the address this server dialled, as `watchUrlFor` falls back to: the person handed it runs this server.
+      // Unlike a watch link, there is no public address from the relay to prefer — the runs API carries none — so a
+      // server that reaches the relay by an internal name (`ws://relay:4000` in a compose network) hands out a link only
+      // that network opens. The docs say so.
+      url: new URL(`/automation/runs/${encodeURIComponent(r.id)}`, this.httpBase()).toString(),
+    }
   }
 
   async listBuilds(): Promise<AppInfo[]> {

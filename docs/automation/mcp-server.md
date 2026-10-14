@@ -118,7 +118,7 @@ Without `TAPFLOW_TOKEN`, the MCP server reads its token from a file. `tapflow to
 
 When a token is revoked, the relay closes the connection right away. Write the new token to the file and the next tool call reconnects with it. The relay releases the sessions the old connection held, so call `connect_device` again.
 
-Connected straight to the relay's port on the Mac it runs on, the MCP server starts and drives devices without a token. `screenshot`, `query_ui_tree` and `list_builds` still need one. When the relay refuses a token, the error says which relay refused it, where the token came from, and how to fix it.
+Connected straight to the relay's port on the Mac it runs on, the MCP server starts and drives devices without a token. `screenshot`, `query_ui_tree`, `list_builds`, `list_runs` and `get_run` still need one. When the relay refuses a token, the error says which relay refused it, where the token came from, and how to fix it.
 
 ## Available tools
 
@@ -140,6 +140,8 @@ Connected straight to the relay's port on the Mac it runs on, the MCP server sta
 | `install_app` | Install an app |
 | `launch_app` | Launch an installed app |
 | `run_flow` | Replay a YAML flow deterministically (no further LLM calls) |
+| `list_runs` | List the run records `tapflow flow run` left on the relay (filter by status, build, flow name, CI or local) |
+| `get_run` | Read one run record: each failed flow's steps (a passed flow's step count), failure message and file path, and screenshots of up to four failed flows |
 
 ## Typical workflow
 
@@ -177,3 +179,23 @@ The page is reached only through the link. It is for the person who asked the co
 ::: details How the link address is chosen
 If the relay has an address teammates can open (a tunnel or `relay.url`), the link uses it, and you can share it with teammates as it is. Otherwise, including when `relay.url` is a `localhost` address, the MCP server builds the link from the `TAPFLOW_RELAY_URL` it connected with. For example, connected with `ws://localhost:4000`, the link starts with `http://localhost:4000/automation/sessions/` and opens on the computer running the MCP server. For an address to send to teammates, see [External access](/operate/external-access).
 :::
+
+## Fix a failed run {#fix-a-failed-run}
+
+When `tapflow flow run` fails in CI, a coding agent can read the run and repair the flow. Ask it something like "fix last night's failed CI run", and it uses the tools in this order:
+
+```text
+list_runs   → find the failed run (status: failed)
+get_run     → which step failed and why, the screen at that moment, and the flow file's path
+(edit)      → change the YAML at the recorded path
+run_flow    → replay the fixed flow on a device to check it
+```
+
+- A recorded flow file path is as the runner was given it, relative to the directory it ran in (the CI job's working directory, for a CI run). The coding agent finds that file in its own checkout.
+- Run records are only read. The coding agent replays the flow itself with `run_flow`; nothing re-runs the CI job.
+- `get_run` returns up to 4 screenshots of failed flows with the record. A passed flow's last screen and the videos are not included; open the run's page at the result's `url` to see them.
+- A failure whose `failureKind` is `environment` was the device, the agent or the relay, not the app or the flow. There is nothing to fix in the flow.
+
+The result's `url` is built from the `TAPFLOW_RELAY_URL` the MCP server connected with. Unlike the watch link, it does not use the relay's public address, so a server that connected by a name inside a container network (such as `ws://relay:4000`) gets a link a browser cannot open.
+
+For when runs are recorded and what the dashboard shows, see [Flow Runs](/automation/runs).
