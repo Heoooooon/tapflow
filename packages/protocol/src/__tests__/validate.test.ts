@@ -353,6 +353,11 @@ describe('a client newer than this relay still joins', () => {
     expect(ok({ type: 'session:start', sessionId: 's1', clientKind: 'mcp' }).msg).toMatchObject({ clientKind: 'mcp' })
   })
 
+  it('keeps stream: false, and drops a stream value it does not know without refusing the join', () => {
+    expect(ok({ type: 'session:start', sessionId: 's1', stream: false }).msg).toMatchObject({ stream: false })
+    expect(ok({ type: 'session:start', sessionId: 's1', stream: 'audio-only' }).msg).toEqual({ type: 'session:start', sessionId: 's1', stream: undefined })
+  })
+
   it('still refuses a kind that is not a string', () => {
     expect(fail({ type: 'session:start', sessionId: 's1', clientKind: 7 }).reason).toBe('bad-shape')
   })

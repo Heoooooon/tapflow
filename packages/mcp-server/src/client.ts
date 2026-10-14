@@ -777,7 +777,8 @@ export class TapflowClient {
 
   /** @returns where a person can watch this session in the dashboard — see `watchUrlFor`. */
   async connectDevice(sessionId: string): Promise<{ watchUrl: string }> {
-    this.send({ type: 'session:start', sessionId, clientKind: 'mcp' })
+    // Nothing here reads the stream (binary is dropped on arrival; screenshots are REST), so the relay sends none.
+    this.send({ type: 'session:start', sessionId, clientKind: 'mcp', stream: false })
     const msg = await this.waitFor(
       (m) =>
         (m['type'] === 'session:joined' && m['sessionId'] === sessionId) ||

@@ -330,8 +330,9 @@ describe('browser-inbound routing matches the protocol union', () => {
     },
     BrowserToRelay: {
       'agents:list': '',
-      // `clientKind` optional: an older client joins as before and is simply not watchable.
-      'session:start': 'clientKind? sessionId',
+      // `clientKind` optional: an older client joins as before and is simply not watchable. `stream` optional too:
+      // only `false` changes anything (no frames to this holder), and an older relay strips it.
+      'session:start': 'clientKind? sessionId stream?',
       'session:end': 'sessionId',
       'session:leave': 'sessionId',
       'device:boot': 'payload requestId sessionId',

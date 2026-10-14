@@ -141,7 +141,8 @@ describe('TapflowClient', () => {
       ])
       // `clientKind` is what makes the session watchable by a teammate — without it the relay treats this
       // client as one that predates watching, and the dashboard offers no Watch link.
-      expect(msg).toMatchObject({ type: 'session:start', sessionId: 'sess-1', clientKind: 'mcp' })
+      // X1: nothing in the MCP server reads the stream, so it asks the relay for none.
+      expect(msg).toMatchObject({ type: 'session:start', sessionId: 'sess-1', clientKind: 'mcp', stream: false })
     })
 
     it('returns the watch link the relay gives', async () => {

@@ -36,6 +36,9 @@ export interface Session {
    *  `owner`: a session nobody holds is nobody's kind. Only an AI kind makes the session watchable. */
   holderKind: ClientKind | null
   holderLabel: string | null
+  /** False when the holder said on `session:start` it does not read the stream (`stream: false`): the relay sends
+   *  it no frames. Kept with the holder rather than on its socket, so it resets with every change of holder. */
+  holderStream: boolean
   streamSocket: WebSocket | null
   deviceId: string
   deviceName: string
@@ -172,6 +175,7 @@ export class SessionManager {
         ownerUser: null,
         holderKind: null,
         holderLabel: null,
+        holderStream: true,
         streamSocket: null,
         deviceId: d.id,
         readySent: false,
@@ -251,7 +255,7 @@ export class SessionManager {
     owner: { key: string; user: string; minted: boolean },
     isAlive: (ws: WebSocket) => boolean,
     /** What the joining client declared itself to be, and who to show behind it. */
-    holder: { kind?: ClientKind; label: string } = { label: owner.user },
+    holder: { kind?: ClientKind; label: string; stream?: boolean } = { label: owner.user },
   ): JoinResult {
     const session = this.sessions.get(sessionId)
     if (!session) return { ok: false, failure: 'not-found' }
@@ -291,6 +295,7 @@ export class SessionManager {
     session.ownerUser = owner.user
     session.holderKind = holder.kind ?? null
     session.holderLabel = holder.label
+    session.holderStream = holder.stream !== false
     // Also when the same client re-joins as something that is not an AI client: a watch is admitted to an
     // AI client's session, and only that kind may be watched.
     this.evictWatchers(sessionId, 'holder-changed', (admitted) => admitted !== owner.key || !isAiClientKind(holder.kind))
@@ -325,6 +330,7 @@ export class SessionManager {
     session.ownerUser = null
     session.holderKind = null
     session.holderLabel = null
+    session.holderStream = true
     if (session.idleTimer) { clearTimeout(session.idleTimer); session.idleTimer = null }
     if (onTimeout) {
       session.idleTimer = setTimeout(() => {
