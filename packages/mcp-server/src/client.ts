@@ -76,6 +76,8 @@ export interface RunFilter {
   flow?: string
   ci?: boolean
   limit?: number
+  /** `nextCursor` from an earlier page: the runs older than it. */
+  before?: string
 }
 
 const RUNS_LIMIT_MAX = 50
@@ -1259,22 +1261,25 @@ export class TapflowClient {
   }
 
   /** Run records `tapflow flow run` left on the relay, newest first (B3). Read-only. */
-  async listRuns(filter: RunFilter): Promise<RunInfo[]> {
+  async listRuns(filter: RunFilter): Promise<{ runs: RunInfo[]; nextCursor: string | null }> {
     const url = new URL('/api/v1/runs', this.httpBase())
     if (filter.status) url.searchParams.set('status', filter.status)
     if (filter.buildId !== undefined) url.searchParams.set('build', String(filter.buildId))
     if (filter.flow) url.searchParams.set('flow', filter.flow)
     if (filter.ci !== undefined) url.searchParams.set('ci', filter.ci ? '1' : '0')
     url.searchParams.set('limit', String(Math.min(Math.max(1, Math.floor(filter.limit ?? 10)), RUNS_LIMIT_MAX)))
+    if (filter.before) url.searchParams.set('before', filter.before)
     const res = await fetchWithToken(this.tokens, url.toString(), {})
     if (!res.ok) throw this.restRefusal('runs', res.status)
-    const body = (await res.json()) as { items?: RawRun[] }
-    return (body.items ?? []).map((r) => ({
+    const body = (await res.json()) as { items?: RawRun[]; nextCursor?: string | null }
+    // The cursor goes back out: without it an agent can reach only the newest page of what matches.
+    const runs = (body.items ?? []).map((r) => ({
       ...this.runHead(r),
       flows: { passed: r.flowsPassed ?? 0, failed: r.flowsFailed ?? 0, total: r.flowsTotal },
       createdAt: r.createdAt,
       finishedAt: r.finishedAt,
     }))
+    return { runs, nextCursor: body.nextCursor ?? null }
   }
 
   /** One run record with each flow's steps and failure, without the fields only the dashboard reads (B3). */

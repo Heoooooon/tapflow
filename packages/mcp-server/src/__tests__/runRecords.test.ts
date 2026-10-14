@@ -50,7 +50,8 @@ describe('TapflowClient run records', () => {
   it('lists runs with the filters as the relay names them, summarised', async () => {
     const calls = stubRelay(() => Response.json({ items: [{ ...summary, flowsPassed: 1, flowsFailed: 1 }], nextCursor: '5', prevCursor: null }))
     const client = new TapflowClient(RELAY, TOKEN)
-    const runs = await client.listRuns({ status: 'failed', buildId: 7, flow: 'pay', ci: true, limit: 5 })
+    const { runs, nextCursor } = await client.listRuns({ status: 'failed', buildId: 7, flow: 'pay', ci: true, limit: 5 })
+    expect(nextCursor).toBe('5')
     expect(calls[0]!.url.origin + calls[0]!.url.pathname).toBe('http://relay.example.test:4000/api/v1/runs')
     expect(Object.fromEntries(calls[0]!.url.searchParams)).toEqual({ status: 'failed', build: '7', flow: 'pay', ci: '1', limit: '5' })
     expect(calls[0]!.auth).toBe(`Bearer ${TOKEN}`)
@@ -168,10 +169,24 @@ describe('get_run / list_runs tools', () => {
     expect(text(res)).toContain('no run with id "nope"')
   })
 
-  it('lists runs through the same filters', async () => {
-    const calls = stubRelay(() => Response.json({ items: [{ ...summary, flowsPassed: 1, flowsFailed: 1 }], nextCursor: null, prevCursor: null }))
-    const res = await tools(new TapflowClient(RELAY, TOKEN)).get('list_runs')!({ status: 'failed', ci: false })
+  it('lists runs through the same filters, and pages back with the cursor it hands out', async () => {
+    const calls = stubRelay(() => Response.json({ items: [{ ...summary, flowsPassed: 1, flowsFailed: 1 }], nextCursor: '41', prevCursor: null }))
+    const list = tools(new TapflowClient(RELAY, TOKEN)).get('list_runs')!
+    const first = JSON.parse(text(await list({ status: 'failed', ci: false }))) as { runs: { id: string }[]; nextCursor: string | null }
     expect(Object.fromEntries(calls[0]!.url.searchParams)).toEqual({ status: 'failed', ci: '0', limit: '10' })
-    expect(JSON.parse(text(res))[0].id).toBe('run-1')
+    expect(first.runs[0]!.id).toBe('run-1')
+    expect(first.nextCursor).toBe('41')
+    await list({ status: 'failed', before: first.nextCursor })
+    expect(calls[1]!.url.searchParams.get('before')).toBe('41')
+  })
+
+  it('fills the four places with screenshots that exist, skipping one that is gone', async () => {
+    const calls = runWith([0, 1, 2, 3, 4].map((i) => failedFlow(i)), (url) => (url.pathname.includes('/flows/0/')
+      ? Response.json({ error: 'No screenshot' }, { status: 404 })
+      : new Response(PNG, { headers: { 'Content-Type': 'image/png' } })))
+    const res = await tools(new TapflowClient(RELAY, TOKEN)).get('get_run')!({ runId: 'run-1' })
+    expect(images(res)).toHaveLength(4)
+    expect(calls.filter((c) => c.url.pathname.endsWith('/screenshot'))).toHaveLength(5)
+    expect(text(res)).not.toContain('more failed flows have a screenshot')
   })
 })

@@ -141,7 +141,7 @@ Connected straight to the relay's port on the Mac it runs on, the MCP server sta
 | `launch_app` | Launch an installed app |
 | `run_flow` | Replay a YAML flow deterministically (no further LLM calls) |
 | `list_runs` | List the run records `tapflow flow run` left on the relay (filter by status, build, flow name, CI or local) |
-| `get_run` | Read one run record: each flow's steps, failure message and file path, and the screen each failed flow stopped on |
+| `get_run` | Read one run record: each failed flow's steps (a passed flow's step count), failure message and file path, and the screen each failed flow stopped on |
 
 ## Typical workflow
 

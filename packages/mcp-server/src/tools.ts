@@ -186,19 +186,20 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     {
       description:
         'List the flow runs `tapflow flow run` recorded on the relay (CI and local), newest first. Use it to find a failed ' +
-        'run, then get_run to see why. Read-only.',
+        'run, then get_run to see why. When nextCursor is not null, pass it as "before" for the older runs. Read-only.',
       inputSchema: {
         status: z.enum(['running', 'passed', 'failed', 'aborted']).optional().describe('Only runs that ended this way ("aborted" is a cancelled run)'),
         buildId: z.number().int().optional().describe('Only runs of this build (from list_builds)'),
         flow: z.string().optional().describe('Only runs with a flow whose name contains this'),
         ci: z.boolean().optional().describe('true for CI runs only, false for local runs only'),
         limit: z.number().int().optional().describe(`How many (default 10, at most ${RUNS_LIMIT})`),
+        before: z.string().optional().describe('nextCursor from an earlier list_runs, for the runs older than that page'),
       },
     },
-    async ({ status, buildId, flow, ci, limit }) => {
+    async ({ status, buildId, flow, ci, limit, before }) => {
       try {
-        const runs = await client.listRuns({ status, buildId, flow, ci, limit: limit ?? 10 })
-        return ok(JSON.stringify(runs, null, 2))
+        const page = await client.listRuns({ status, buildId, flow, ci, limit: limit ?? 10, before })
+        return ok(JSON.stringify(page, null, 2))
       } catch (e) {
         return err(`list_runs failed: ${(e as Error).message}`)
       }
@@ -209,7 +210,7 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     'get_run',
     {
       description:
-        'Read one recorded flow run: each flow\'s steps, failure message, whether the failure was the app ("product") or ' +
+        'Read one recorded flow run: each failed flow\'s steps (a passed flow\'s step count, stepCount), failure message, whether the failure was the app ("product") or ' +
         'the environment, and the flow file\'s path. The screen each failed flow stopped on comes back as an image. A ' +
         'file path is as the runner was given it, relative to the directory it ran in (the CI job\'s, for a CI run), so ' +
         'find that file in your checkout before editing it; then replay it with run_flow. Read-only.',
@@ -233,7 +234,12 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
         // refuse a whole answer over one large image.
         const failed = run.flows.filter((f) => f.status === 'failed' && f.hasScreenshot)
         let bytes = 0
-        for (const f of failed.slice(0, RUN_SCREENSHOTS_MAX)) {
+        let attached = 0
+        let tried = 0
+        // Counted by images attached, not candidates: a screenshot that is gone does not use up a place.
+        for (const f of failed) {
+          if (attached === RUN_SCREENSHOTS_MAX) break
+          tried++
           // One screenshot that cannot be read costs that screenshot, not the record already in hand.
           let shot: Awaited<ReturnType<typeof client.runScreenshot>>
           try {
@@ -253,8 +259,9 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
           }
           content.push({ type: 'text', text: `Screenshot of ${f.name} (flow ${f.idx}), where it failed:` })
           content.push({ type: 'image', data: shot.data.toString('base64'), mimeType: shot.mimeType })
+          attached++
         }
-        const left = failed.length - RUN_SCREENSHOTS_MAX
+        const left = failed.length - tried
         if (left > 0) content.push({ type: 'text', text: `${left} more failed flows have a screenshot; open the run's page (url) to see them.` })
         return { content }
       } catch (e) {
