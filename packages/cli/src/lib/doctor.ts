@@ -5,8 +5,9 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { LeanStore } from '@tapflowio/ios-agent'
 import {
-  isFilterEnforcing, isNetFilterCurrent, isNewer, readNetFilterState, removalSteps, shippedHookPath,
+  isFilterEnforcing, isNetFilterCurrent, isNewer, readNetFilterState, removalSteps, shellQuote, shippedHookPath,
 } from './net-filter.js'
+import { activeDeveloperDir, findXcodeApp, selectedXcodeApp } from './xcode.js'
 
 /**
  * How long any one probe may take before `doctor` treats it as unanswerable.
@@ -47,14 +48,18 @@ function buildIosChecks(isMac: boolean, lean: boolean): DoctorCheck[] {
   if (!isMac) {
     return [{ label: 'iOS', ok: false, warn: true, detail: 'iOS testing requires macOS.' }]
   }
-  // Xcode.app이 없으면 xcodebuild/xcrun을 부르지 않는다 — 호출 시 macOS가 CLT 설치 팝업을 띄운다.
+  // Without an Xcode, or with one but no developer directory at all, xcodebuild/xcrun are not called:
+  // either way the shims would raise the Command Line Tools install dialog. The second case is a
+  // bundle `xcode-select` does not fall back to on its own, such as `Xcode-27.0.0.app` from `xcodes`
+  // on a Mac that has never selected one.
   //
   // **넷필터 체크는 이 조기 반환에도 붙는다.** 확장은 Xcode와 무관하게 설치·활성될 수 있고, 이 경로가
   // 체크를 빠뜨리면 Xcode 없는 맥에서는 넷필터 상태를 물어볼 방법이 아예 없다. 설계 리뷰가 "체크
   // 추가는 배열에 객체를 넣는 일"이라는 전제를 반환 경로가 셋이라는 사실로 반박했다.
-  if (!existsSync('/Applications/Xcode.app')) {
+  const xcodeApp = findXcodeApp()
+  if (!xcodeApp || activeDeveloperDir() === null) {
     return [
-      {
+      xcodeApp ? notSelected(xcodeApp) : {
         label: 'Xcode',
         ok: false,
         detail: 'Install Xcode from https://developer.apple.com/xcode/ or the Mac App Store. Or run: tapflow setup ios',
@@ -72,7 +77,7 @@ function buildIosChecks(isMac: boolean, lean: boolean): DoctorCheck[] {
   }
   // Read once and shared: both checks below need the list, and each read is an `xcrun` round trip.
   const simulators = listSimulators()
-  return [checkXcode(), checkSimctl(), checkBootedSimulator(simulators), ...buildNetFilterChecks(), checkNetworkHook(), checkHookSymbols(), checkLeanMode(lean, simulators)]
+  return [checkXcode(xcodeApp), checkSimctl(), checkBootedSimulator(simulators), ...buildNetFilterChecks(), checkNetworkHook(), checkHookSymbols(), checkLeanMode(lean, simulators)]
 }
 
 /**
@@ -425,24 +430,30 @@ function checkAdbStatus(adb: AdbResolution | null): DoctorCheck {
   }
 }
 
-function checkXcode(): DoctorCheck {
+function notSelected(xcodeApp: string): DoctorCheck {
+  return {
+    label: 'Xcode',
+    ok: false,
+    detail: `Xcode is installed but xcode-select is not configured. Run: sudo xcode-select -s ${shellQuote(`${xcodeApp}/Contents/Developer`)}`,
+  }
+}
+
+function checkXcode(xcodeApp: string): DoctorCheck {
   try {
     const out = execSync('xcodebuild -version', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: PROBE_TIMEOUT_MS })
     const version = out.split('\n')[0]?.replace('Xcode ', '') ?? ''
     return { label: `Xcode ${version}`, ok: true }
   } catch {
-    if (existsSync('/Applications/Xcode.app')) {
+    // Already selected and still failing is almost always the licence or first launch, which is
+    // what `setup ios` finishes in the same state. Re-selecting it would change nothing.
+    if (selectedXcodeApp() === xcodeApp) {
       return {
         label: 'Xcode',
         ok: false,
-        detail: 'Xcode is installed but xcode-select is not configured. Run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer',
+        detail: 'Xcode is selected but not set up. Run: sudo xcodebuild -license accept && sudo xcodebuild -runFirstLaunch',
       }
     }
-    return {
-      label: 'Xcode',
-      ok: false,
-      detail: 'Install Xcode from https://developer.apple.com/xcode/ or the Mac App Store.',
-    }
+    return notSelected(xcodeApp)
   }
 }
 

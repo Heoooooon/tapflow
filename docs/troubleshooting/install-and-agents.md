@@ -43,7 +43,7 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
 ### `Xcode not found` — Xcode is installed but `xcode-select` is not configured
 
-This commonly happens after installing Xcode from the Mac App Store. Xcode is present but the developer tools path is not registered:
+This commonly happens after installing Xcode from the Mac App Store. Xcode is present but the developer tools path is not registered. If your Xcode is not at `/Applications/Xcode.app`, for example `Xcode-27.0.0.app` installed by `xcodes`, use the path `tapflow doctor` prints instead:
 
 ```sh
 sudo xcode-select -s /Applications/Xcode.app/Contents/Developer

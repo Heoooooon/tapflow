@@ -1,7 +1,7 @@
 import { execSync, spawnSync } from 'node:child_process'
 import {
   installNetFilter, followThroughApproval, offerApprovalUpFront, APPROVAL_PATH, INSTALL_STAGE_MESSAGE, isFilterEnforcing,
-  isNetFilterCurrent, readNetFilterState, removalSteps, CONFIRM_DEADLINE_MS, NET_FILTER_APP,
+  isNetFilterCurrent, readNetFilterState, removalSteps, shellQuote, CONFIRM_DEADLINE_MS, NET_FILTER_APP,
   type InstallOptions,
 } from './net-filter.js'
 import { existsSync, readFileSync, appendFileSync, readdirSync } from 'node:fs'
@@ -13,6 +13,7 @@ import { resolveAdb, type DoctorCheck } from './doctor.js'
 import { step } from './print.js'
 import { terminalApprovalDeps } from './approval-prompt.js'
 import { isInteractive } from './interactive.js'
+import { findXcodeApp, selectedXcodeApp, DEFAULT_XCODE_APP } from './xcode.js'
 
 // SetupStepResult = DoctorCheck + optional state (found/created/repaired); ok is untouched so doctor is unaffected.
 export type SetupStepState = 'found' | 'created' | 'repaired'
@@ -22,9 +23,7 @@ const PATH_MARKER_START = '# >>> tapflow android sdk >>>'
 const PATH_MARKER_END = '# <<< tapflow android sdk <<<'
 // SDK를 표준 경로에 자기완결로 고정한다(cmdline-tools·platform-tools·emulator·system-image 모두 이 아래).
 const ANDROID_SDK_DIR = join(homedir(), 'Library', 'Android', 'sdk')
-const XCODE_APP = '/Applications/Xcode.app'
 const XCODE_APPSTORE = 'https://apps.apple.com/app/xcode/id497799835'
-const XCODE_DEVELOPER_DIR = '/Applications/Xcode.app/Contents/Developer'
 // Play Store 이미지는 crash 이슈가 있어 google_apis(non-playstore)를 쓴다.
 const AVD_IMAGE_API = 'android-35'
 // Needed for apk metadata extraction (aapt). Pinned to match the system image API (android-35).
@@ -352,7 +351,7 @@ async function checkAndFixAudioPermission(): Promise<SetupStepResult> {
 }
 
 async function checkAndFixXcode(): Promise<SetupStepResult> {
-  if (existsSync(XCODE_APP)) {
+  if (findXcodeApp()) {
     return { label: 'Xcode installed', ok: true, state: 'found' }
   }
   // Xcode는 App Store에서만 설치 가능 — CLI가 직접 설치할 수 없다.
@@ -384,7 +383,7 @@ async function checkAndFixXcode(): Promise<SetupStepResult> {
       detail: 'Cancelled. Re-run `tapflow setup ios` after installing Xcode.',
     }
   }
-  if (existsSync(XCODE_APP)) {
+  if (findXcodeApp()) {
     return { label: 'Xcode installed', ok: true, state: 'created' }
   }
   return {
@@ -400,23 +399,18 @@ async function checkXcodeActivation(xcodeInstalled: boolean): Promise<SetupStepR
   if (!xcodeInstalled) {
     return { label: 'Xcode activation', ok: false, warn: true, detail: 'Install Xcode first.' }
   }
-  const selectHint = `Run: sudo xcode-select -s ${XCODE_DEVELOPER_DIR}`
+  const developerDir = `${findXcodeApp() ?? DEFAULT_XCODE_APP}/Contents/Developer`
+  const selectHint = `Run: sudo xcode-select -s ${shellQuote(developerDir)}`
   // 이번 실행에서 sudo로 재구성한 적이 있으면 found가 아니라 repaired로 보고한다.
   let repaired = false
 
-  // 1. active developer dir이 Xcode를 가리키게
-  let dir = ''
-  try {
-    dir = execSync('xcode-select -p', { encoding: 'utf8', stdio: 'pipe' }).trim()
-  } catch {
-    // 미설정 — 아래에서 조치
-  }
-  if (!dir.includes('Xcode.app')) {
+  // 1. Point the active developer dir into an Xcode bundle, whatever the bundle is named.
+  if (!selectedXcodeApp()) {
     if (!isInteractive()) {
       return { label: 'Xcode command-line tools', ok: false, warn: true, detail: selectHint }
     }
     const ok = await runSudo('Set Xcode as the active developer directory (needs sudo)?', [
-      ['xcode-select', '-s', XCODE_DEVELOPER_DIR],
+      ['xcode-select', '-s', developerDir],
     ])
     if (!ok) {
       return { label: 'Xcode command-line tools', ok: false, warn: true, detail: selectHint }

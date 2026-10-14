@@ -39,7 +39,7 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
 ### `Xcode not found` — Xcode는 설치되어 있지만 `xcode-select`가 설정되지 않은 경우
 
-Mac App Store에서 Xcode를 설치한 후 흔히 발생합니다. Xcode는 있지만 개발자 도구 경로가 등록되지 않은 상태입니다:
+Mac App Store에서 Xcode를 설치한 후 흔히 발생합니다. Xcode는 있지만 개발자 도구 경로가 등록되지 않은 상태입니다. Xcode가 `/Applications/Xcode.app`에 있지 않다면(예: `xcodes`로 설치한 `Xcode-27.0.0.app`) `tapflow doctor`가 출력하는 경로를 대신 사용합니다:
 
 ```sh
 sudo xcode-select -s /Applications/Xcode.app/Contents/Developer

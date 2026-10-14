@@ -558,7 +558,7 @@ describe('runSetupIos', () => {
     // `systemextensionsctl`에 그대로 `[activated enabled]`로 남는다. heartbeat 파일이 그 차이를
     // 말하는 유일한 자리라서, 이 픽스처가 그것을 빠뜨리면 "완전 구성"이 아니다.
     mockExistsSync.mockImplementation((p) =>
-      p === XCODE_APP || String(p).includes('TapflowNetFilter.app') || p === FILTER_STATE_FILE)
+      p === XCODE_APP || p === `${XCODE_APP}/Contents/Developer` || String(p).includes('TapflowNetFilter.app') || p === FILTER_STATE_FILE)
     mockReadFileSync.mockImplementation((p) => (p === FILTER_STATE_FILE
       ? JSON.stringify({ at: Math.floor(Date.now() / 1000), pulseSeconds: 5 }) as never
       : '' as never))
@@ -603,12 +603,14 @@ describe('runSetupIos', () => {
 
   it('Xcode 미설치 + TTY → App Store 열고 재확인 후 설치되면 ok', async () => {
     setTTY(true)
-    // 처음엔 미설치, 두 번째 호출(재확인)부터 설치됨
-    let calls = 0
-    mockExistsSync.mockImplementation((p) => {
-      if (p === XCODE_APP) return calls++ > 0
-      return false
-    })
+    // Xcode appears once the App Store has been opened. Keyed to that event rather than to a count
+    // of existsSync calls, because finding Xcode checks the same path more than once.
+    let installed = false
+    mockSpawnSync.mockImplementation(((cmd: string) => {
+      if (cmd === 'open') installed = true
+      return okSpawn
+    }) as never)
+    mockExistsSync.mockImplementation((p) => installed && String(p).startsWith(XCODE_APP))
 
     const results = await runSetupIos()
     expect(mockText).toHaveBeenCalled()
@@ -680,6 +682,48 @@ describe('runSetupIos', () => {
     expect(findStep(results, 'xcode ready')?.ok).toBe(true)
   })
 
+  it('accepts a selected Xcode under a versioned name without asking for sudo', async () => {
+    setTTY(true)
+    mockExistsSync.mockImplementation((p) =>
+      String(p).startsWith('/Applications/Xcode-27.0.0.app') || String(p).includes('TapflowNetFilter.app') || p === FILTER_STATE_FILE)
+    mockExecSync.mockImplementation((cmd) => {
+      const c = cmd as string
+      if (c === 'which brew') return '/opt/homebrew/bin/brew\n'
+      if (c === 'xcode-select -p') return '/Applications/Xcode-27.0.0.app/Contents/Developer\n'
+      if (c === 'xcodebuild -version') return 'Xcode 27.0\n'
+      if (c.includes('simctl list devices')) return simctlBooted
+      return ''
+    })
+
+    const results = await runSetupIos()
+    expect(findStep(results, 'xcode installed')?.ok).toBe(true)
+    expect(findStep(results, 'xcode ready')).toMatchObject({ ok: true, state: 'found' })
+    expect(mockSpawnSync).not.toHaveBeenCalledWith('sudo', expect.arrayContaining(['xcode-select']), expect.anything())
+  })
+
+  it('selects a versioned Xcode when only the Command Line Tools are selected', async () => {
+    setTTY(true)
+    mockConfirm.mockResolvedValue(true as never)
+    mockExistsSync.mockImplementation((p) =>
+      String(p).startsWith('/Applications/Xcode-27.0.0.app') || String(p).includes('TapflowNetFilter.app') || p === FILTER_STATE_FILE)
+    mockReaddirSync.mockImplementation(((dir: string) => (dir === '/Applications' ? ['Xcode-27.0.0.app'] : [])) as never)
+    mockExecSync.mockImplementation((cmd) => {
+      const c = cmd as string
+      if (c === 'which brew') return '/opt/homebrew/bin/brew\n'
+      if (c === 'xcode-select -p') return '/Library/Developer/CommandLineTools\n'
+      if (c === 'xcodebuild -version') return 'Xcode 27.0\n'
+      if (c.includes('simctl list devices')) return simctlBooted
+      return ''
+    })
+
+    await runSetupIos()
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      'sudo',
+      ['xcode-select', '-s', '/Applications/Xcode-27.0.0.app/Contents/Developer'],
+      expect.anything(),
+    )
+  })
+
   it('시뮬 디바이스 없음 + TTY + 수락 시 xcodebuild -downloadPlatform 실행', async () => {
     setTTY(true)
     mockConfirm.mockResolvedValue(true as never)
@@ -730,7 +774,7 @@ describe('runSetupIos', () => {
     // a reason that has nothing to do with it.
     vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
     // No `TapflowNetFilter.app` and no heartbeat: the step falls past its own no-op check.
-    mockExistsSync.mockImplementation((path) => path === XCODE_APP)
+    mockExistsSync.mockImplementation((path) => path === XCODE_APP || path === `${XCODE_APP}/Contents/Developer`)
 
     const results = await runSetupIos()
     expect(mockConfirm).not.toHaveBeenCalled()
@@ -753,7 +797,7 @@ describe('runSetupIos', () => {
     setTTY(true)
     mockConfirm.mockResolvedValue(false as never)
     vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
-    mockExistsSync.mockImplementation((path) => path === XCODE_APP)
+    mockExistsSync.mockImplementation((path) => path === XCODE_APP || path === `${XCODE_APP}/Contents/Developer`)
 
     const results = await runSetupIos()
     expect(mockConfirm).toHaveBeenCalled()
@@ -826,7 +870,7 @@ describe('runSetupIos', () => {
     // 아무것도 안 하기로 결정하는 자리였다.
     setTTY(false)
     mockExistsSync.mockImplementation((p) =>
-      p === XCODE_APP || String(p).includes('TapflowNetFilter.app'))
+      p === XCODE_APP || p === `${XCODE_APP}/Contents/Developer` || String(p).includes('TapflowNetFilter.app'))
     const results = await runSetupIos()
     const step = results.find((r) => r.label === 'Network filter')
     expect(step?.state, '꺼진 필터를 found로 보고했다').not.toBe('found')
