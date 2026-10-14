@@ -65,12 +65,13 @@ describe('findXcodeApp', () => {
     expect(findXcodeApp()).toBeNull()
   })
 
-  it('skips the xcodes GUI, whose name matches but which has no Contents/Developer', () => {
+  // Alone, because `Xcodes.app` sorts after every `Xcode-*.app` and `Xcode.app`: next to a real
+  // Xcode it is never reached, so only this case can tell whether the guard is there.
+  it('does not take the xcodes GUI, whose name matches, for an Xcode', () => {
     selecting('/Library/Developer/CommandLineTools')
-    mockExistsSync.mockImplementation((p) =>
-      p === '/Applications/Xcodes.app' || String(p).startsWith('/Applications/Xcode-27.0.0.app'))
-    mockReaddirSync.mockReturnValue(['Xcode-27.0.0.app', 'Xcodes.app'] as never)
-    expect(findXcodeApp()).toBe('/Applications/Xcode-27.0.0.app')
+    mockExistsSync.mockImplementation((p) => p === '/Applications/Xcodes.app')
+    mockReaddirSync.mockReturnValue(['Xcodes.app'] as never)
+    expect(findXcodeApp()).toBeNull()
   })
 
   it('returns null when xcode-select fails and nothing is installed', () => {
