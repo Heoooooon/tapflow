@@ -558,7 +558,7 @@ describe('runSetupIos', () => {
     // `systemextensionsctl`에 그대로 `[activated enabled]`로 남는다. heartbeat 파일이 그 차이를
     // 말하는 유일한 자리라서, 이 픽스처가 그것을 빠뜨리면 "완전 구성"이 아니다.
     mockExistsSync.mockImplementation((p) =>
-      p === XCODE_APP || String(p).includes('TapflowNetFilter.app') || p === FILTER_STATE_FILE)
+      p === XCODE_APP || p === `${XCODE_APP}/Contents/Developer` || String(p).includes('TapflowNetFilter.app') || p === FILTER_STATE_FILE)
     mockReadFileSync.mockImplementation((p) => (p === FILTER_STATE_FILE
       ? JSON.stringify({ at: Math.floor(Date.now() / 1000), pulseSeconds: 5 }) as never
       : '' as never))
@@ -774,7 +774,7 @@ describe('runSetupIos', () => {
     // a reason that has nothing to do with it.
     vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
     // No `TapflowNetFilter.app` and no heartbeat: the step falls past its own no-op check.
-    mockExistsSync.mockImplementation((path) => path === XCODE_APP)
+    mockExistsSync.mockImplementation((path) => path === XCODE_APP || path === `${XCODE_APP}/Contents/Developer`)
 
     const results = await runSetupIos()
     expect(mockConfirm).not.toHaveBeenCalled()
@@ -797,7 +797,7 @@ describe('runSetupIos', () => {
     setTTY(true)
     mockConfirm.mockResolvedValue(false as never)
     vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
-    mockExistsSync.mockImplementation((path) => path === XCODE_APP)
+    mockExistsSync.mockImplementation((path) => path === XCODE_APP || path === `${XCODE_APP}/Contents/Developer`)
 
     const results = await runSetupIos()
     expect(mockConfirm).toHaveBeenCalled()
@@ -870,7 +870,7 @@ describe('runSetupIos', () => {
     // 아무것도 안 하기로 결정하는 자리였다.
     setTTY(false)
     mockExistsSync.mockImplementation((p) =>
-      p === XCODE_APP || String(p).includes('TapflowNetFilter.app'))
+      p === XCODE_APP || p === `${XCODE_APP}/Contents/Developer` || String(p).includes('TapflowNetFilter.app'))
     const results = await runSetupIos()
     const step = results.find((r) => r.label === 'Network filter')
     expect(step?.state, '꺼진 필터를 found로 보고했다').not.toBe('found')

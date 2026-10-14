@@ -182,7 +182,7 @@ describe('runDoctorChecks', () => {
 
   it('booted 시뮬레이터가 있으면 이름 포함', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
-    mockExistsSync.mockImplementation((p) => p === '/Applications/Xcode.app')
+    mockExistsSync.mockImplementation((p) => p === '/Applications/Xcode.app' || p === '/Applications/Xcode.app/Contents/Developer')
     mockExecSync.mockImplementation((cmd) => {
       const c = cmd as string
       if (c === 'xcodebuild -version') return 'Xcode 15.0\n'
@@ -197,7 +197,7 @@ describe('runDoctorChecks', () => {
 
   it('booted 안 됐어도 디바이스가 있으면 ok (부팅은 on-demand)', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
-    mockExistsSync.mockImplementation((p) => p === '/Applications/Xcode.app')
+    mockExistsSync.mockImplementation((p) => p === '/Applications/Xcode.app' || p === '/Applications/Xcode.app/Contents/Developer')
     mockExecSync.mockImplementation((cmd) => {
       const c = cmd as string
       if (c === 'xcodebuild -version') return 'Xcode 15.0\n'
@@ -277,6 +277,24 @@ describe('runDoctorChecks', () => {
     const result = await runDoctorChecks()
     const xcodeCheck = result.ios?.find((c) => c.label === 'Xcode')
     expect(xcodeCheck?.detail).toContain('sudo xcode-select -s /Applications/Xcode-27.0.0.app/Contents/Developer')
+  })
+
+  it('quotes a bundle path with a space in the xcode-select hint', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+    mockExistsSync.mockImplementation((p) => String(p).startsWith('/Applications/Xcode 27.app'))
+    mockReaddirSync.mockReturnValue(['Xcode 27.app'] as never)
+    mockExecSync.mockImplementation((cmd) => {
+      const c = cmd as string
+      if (c === 'xcode-select -p') return '/Library/Developer/CommandLineTools\n'
+      if (c === 'xcodebuild -version') throw new Error('requires Xcode')
+      if (c.startsWith('xcrun simctl')) return simctlBooted
+      if (c === 'which adb') throw new Error('not found')
+      return ''
+    })
+
+    const result = await runDoctorChecks()
+    const xcodeCheck = result.ios?.find((c) => c.label === 'Xcode')
+    expect(xcodeCheck?.detail).toContain(`sudo xcode-select -s '/Applications/Xcode 27.app/Contents/Developer'`)
   })
 
   // xcode-select falls back to /Applications/Xcode.app on its own, never to a versioned bundle, so
@@ -515,7 +533,7 @@ describe('Network hook symbols (#629)', () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
     mockExistsSync.mockImplementation((p) => {
       const path = String(p)
-      if (path === '/Applications/Xcode.app') return true
+      if (path === '/Applications/Xcode.app' || path === '/Applications/Xcode.app/Contents/Developer') return true
       // `partial` keeps only `libSystem.tbd`, which is the shape that matters: the three files
       // partition the symbols, so a fraction of the evidence looks exactly like withdrawn symbols.
       if (path.endsWith('Network.tbd') || path.endsWith('SystemConfiguration.tbd')) return stubs === 'all'
@@ -594,7 +612,7 @@ describe('Network hook symbols (#629)', () => {
     // without Xcode pops the Command Line Tools install dialog — out of a diagnostic command, at a
     // designer or PM who ran `tapflow doctor` to find out why something does not work.
     vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
-    mockExistsSync.mockImplementation((p) => String(p) !== '/Applications/Xcode.app')
+    mockExistsSync.mockImplementation((p) => !String(p).startsWith('/Applications/Xcode.app'))
     mockExecSync.mockImplementation(() => { throw new Error('xcrun must not be called here') })
 
     const result = await runDoctorChecks('ios')
@@ -613,7 +631,7 @@ describe('Lean mode', () => {
     vi.resetAllMocks()
     mockPortAvailable(true)
     vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
-    mockExistsSync.mockImplementation((p) => p === '/Applications/Xcode.app')
+    mockExistsSync.mockImplementation((p) => p === '/Applications/Xcode.app' || p === '/Applications/Xcode.app/Contents/Developer')
     mockExecSync.mockImplementation((cmd) => {
       const c = cmd as string
       if (c === 'xcodebuild -version') return 'Xcode 26.0\n'

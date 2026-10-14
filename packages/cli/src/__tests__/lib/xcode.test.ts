@@ -59,6 +59,20 @@ describe('findXcodeApp', () => {
     expect(findXcodeApp()).toBe('/Applications/Xcode-27.0.0.app')
   })
 
+  it('skips a selected bundle with no Contents/Developer', () => {
+    selecting('/Applications/Xcode-26.4.app/Contents/Developer')
+    mockExistsSync.mockImplementation((p) => p === '/Applications/Xcode-26.4.app' || p === '/Applications/Xcode-27.0.0.app/Contents/Developer')
+    mockReaddirSync.mockReturnValue(['Xcode-26.4.app', 'Xcode-27.0.0.app'] as never)
+    expect(findXcodeApp()).toBe('/Applications/Xcode-27.0.0.app')
+  })
+
+  it('skips /Applications/Xcode.app when it has no Contents/Developer', () => {
+    selecting('/Library/Developer/CommandLineTools')
+    mockExistsSync.mockImplementation((p) => p === '/Applications/Xcode.app' || p === '/Applications/Xcode-27.0.0.app/Contents/Developer')
+    mockReaddirSync.mockReturnValue(['Xcode-27.0.0.app', 'Xcode.app'] as never)
+    expect(findXcodeApp()).toBe('/Applications/Xcode-27.0.0.app')
+  })
+
   it('ignores apps that are not Xcode', () => {
     selecting('/Library/Developer/CommandLineTools')
     installed('/Applications/Safari.app')

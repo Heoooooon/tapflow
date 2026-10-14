@@ -1,7 +1,7 @@
 import { execSync, spawnSync } from 'node:child_process'
 import {
   installNetFilter, followThroughApproval, offerApprovalUpFront, APPROVAL_PATH, INSTALL_STAGE_MESSAGE, isFilterEnforcing,
-  isNetFilterCurrent, readNetFilterState, removalSteps, CONFIRM_DEADLINE_MS, NET_FILTER_APP,
+  isNetFilterCurrent, readNetFilterState, removalSteps, shellQuote, CONFIRM_DEADLINE_MS, NET_FILTER_APP,
   type InstallOptions,
 } from './net-filter.js'
 import { existsSync, readFileSync, appendFileSync, readdirSync } from 'node:fs'
@@ -400,7 +400,7 @@ async function checkXcodeActivation(xcodeInstalled: boolean): Promise<SetupStepR
     return { label: 'Xcode activation', ok: false, warn: true, detail: 'Install Xcode first.' }
   }
   const developerDir = `${findXcodeApp() ?? DEFAULT_XCODE_APP}/Contents/Developer`
-  const selectHint = `Run: sudo xcode-select -s ${developerDir}`
+  const selectHint = `Run: sudo xcode-select -s ${shellQuote(developerDir)}`
   // 이번 실행에서 sudo로 재구성한 적이 있으면 found가 아니라 repaired로 보고한다.
   let repaired = false
 

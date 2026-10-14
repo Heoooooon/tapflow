@@ -24,17 +24,21 @@ export function activeDeveloperDir(): string | null {
 
 /**
  * The Xcode bundle the active developer directory points into, or null when it points at the
- * Command Line Tools, at nothing, or at a bundle that is gone.
+ * Command Line Tools, at nothing, or at a bundle that is gone or has no `Contents/Developer`.
  */
 export function selectedXcodeApp(): string | null {
   const app = /^(.+\.app)\/Contents\/Developer\/?$/.exec(activeDeveloperDir() ?? '')?.[1]
-  return app && existsSync(app) ? app : null
+  return app && hasDeveloperDir(app) ? app : null
+}
+
+function hasDeveloperDir(app: string): boolean {
+  return existsSync(`${app}/Contents/Developer`)
 }
 
 /**
  * The Xcode bundle to use: the selected one, then `/Applications/Xcode.app`, then the first
- * `Xcode*.app` in `/Applications` by name that has a `Contents/Developer` — the `xcodes` GUI is
- * `Xcodes.app`, which matches the name and is not an Xcode.
+ * `Xcode*.app` in `/Applications` by name. Each must have a `Contents/Developer` — the `xcodes` GUI
+ * is `Xcodes.app`, which matches the name and is not an Xcode.
  *
  * Not only `Xcode.app`, because installers that keep several versions side by side name the bundle
  * after its version (`xcodes` installs `Xcode-27.0.0.app`).
@@ -50,11 +54,11 @@ export function selectedXcodeApp(): string | null {
 export function findXcodeApp(): string | null {
   const selected = selectedXcodeApp()
   if (selected) return selected
-  if (existsSync(DEFAULT_XCODE_APP)) return DEFAULT_XCODE_APP
+  if (hasDeveloperDir(DEFAULT_XCODE_APP)) return DEFAULT_XCODE_APP
   try {
     const app = readdirSync('/Applications')
       .sort()
-      .find((name) => /^Xcode.*\.app$/.test(name) && existsSync(`/Applications/${name}/Contents/Developer`))
+      .find((name) => /^Xcode.*\.app$/.test(name) && hasDeveloperDir(`/Applications/${name}`))
     return app ? `/Applications/${app}` : null
   } catch {
     return null

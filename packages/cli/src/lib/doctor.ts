@@ -5,7 +5,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { LeanStore } from '@tapflowio/ios-agent'
 import {
-  isFilterEnforcing, isNetFilterCurrent, isNewer, readNetFilterState, removalSteps, shippedHookPath,
+  isFilterEnforcing, isNetFilterCurrent, isNewer, readNetFilterState, removalSteps, shellQuote, shippedHookPath,
 } from './net-filter.js'
 import { activeDeveloperDir, findXcodeApp, selectedXcodeApp } from './xcode.js'
 
@@ -434,7 +434,7 @@ function notSelected(xcodeApp: string): DoctorCheck {
   return {
     label: 'Xcode',
     ok: false,
-    detail: `Xcode is installed but xcode-select is not configured. Run: sudo xcode-select -s ${xcodeApp}/Contents/Developer`,
+    detail: `Xcode is installed but xcode-select is not configured. Run: sudo xcode-select -s ${shellQuote(`${xcodeApp}/Contents/Developer`)}`,
   }
 }
 
