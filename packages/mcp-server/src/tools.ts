@@ -211,7 +211,8 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
     {
       description:
         'Read one recorded flow run: each failed flow\'s steps (a passed flow\'s step count, stepCount), failure message, whether the failure was the app ("product") or ' +
-        'the environment, and the flow file\'s path. The screen each failed flow stopped on comes back as an image. A ' +
+        'the environment, and the flow file\'s path. Screenshots of up to four failed flows come back as images (4 MB in all; one that is missing or over that is ' +
+        'named in the text instead). A ' +
         'file path is as the runner was given it, relative to the directory it ran in (the CI job\'s, for a CI run), so ' +
         'find that file in your checkout before editing it; then replay it with run_flow. Read-only.',
       inputSchema: {
