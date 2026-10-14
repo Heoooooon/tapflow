@@ -6,21 +6,28 @@ export const DEFAULT_XCODE_APP = '/Applications/Xcode.app'
 const SELECT_TIMEOUT_MS = 10_000
 
 /**
- * The Xcode bundle the active developer directory points into, or null when it points at the
- * Command Line Tools, at nothing, or at a bundle that is gone.
+ * What `xcode-select -p` prints, or null when it fails, which it does only when no developer
+ * directory exists at all: it falls back to `/Applications/Xcode.app` and then to the Command Line
+ * Tools on its own. With none, the `/usr/bin` shims (`xcrun`, `xcodebuild`) raise the Command Line
+ * Tools install dialog, so a caller about to run one checks this first.
  *
- * `xcode-select` is a real binary, not one of the `/usr/bin` shims, so calling it on a Mac without
- * Xcode does not raise the Command Line Tools install dialog that `xcrun` and `xcodebuild` do. It
- * also honours `DEVELOPER_DIR`.
+ * `xcode-select` is a real binary, not one of those shims, so calling it raises no dialog. It also
+ * honours `DEVELOPER_DIR`.
  */
-export function selectedXcodeApp(): string | null {
-  let dir: string
+export function activeDeveloperDir(): string | null {
   try {
-    dir = String(execSync('xcode-select -p', { encoding: 'utf8', stdio: 'pipe', timeout: SELECT_TIMEOUT_MS }) ?? '').trim()
+    return String(execSync('xcode-select -p', { encoding: 'utf8', stdio: 'pipe', timeout: SELECT_TIMEOUT_MS }) ?? '').trim()
   } catch {
     return null
   }
-  const app = /^(.+\.app)\/Contents\/Developer\/?$/.exec(dir)?.[1]
+}
+
+/**
+ * The Xcode bundle the active developer directory points into, or null when it points at the
+ * Command Line Tools, at nothing, or at a bundle that is gone.
+ */
+export function selectedXcodeApp(): string | null {
+  const app = /^(.+\.app)\/Contents\/Developer\/?$/.exec(activeDeveloperDir() ?? '')?.[1]
   return app && existsSync(app) ? app : null
 }
 
@@ -30,9 +37,15 @@ export function selectedXcodeApp(): string | null {
  * `Xcodes.app`, which matches the name and is not an Xcode.
  *
  * Not only `Xcode.app`, because installers that keep several versions side by side name the bundle
- * after its version (`xcodes` installs `Xcode-27.0.0.app`). The order is the one `touch-helper` and
- * `screencapture-helper` use to find SimulatorKit, so the CLI and the helpers agree on which Xcode
- * a Mac with two of them has.
+ * after its version (`xcodes` installs `Xcode-27.0.0.app`).
+ *
+ * **This is not the helpers' order.** `touch-helper` and `screencapture-helper` also start from the
+ * selected Xcode, but then scan `/Applications` by name with no `Xcode.app` step, and `-` sorts
+ * before `.`, so with the Command Line Tools selected they take `Xcode-beta.app` or
+ * `Xcode-27.0.0.app` over `Xcode.app`. Preferring `Xcode.app` here is deliberate: `setup ios`
+ * selects what this returns, and Apple's own beta is `Xcode-beta.app`, which the scan alone would
+ * select over the release. Once `setup` has selected it, the helpers start from it too, so the two
+ * disagree only on a Mac where nothing has selected an Xcode yet.
  */
 export function findXcodeApp(): string | null {
   const selected = selectedXcodeApp()

@@ -279,6 +279,45 @@ describe('runDoctorChecks', () => {
     expect(xcodeCheck?.detail).toContain('sudo xcode-select -s /Applications/Xcode-27.0.0.app/Contents/Developer')
   })
 
+  // xcode-select falls back to /Applications/Xcode.app on its own, never to a versioned bundle, so
+  // this Mac has an Xcode and no developer directory: any shim call raises the CLT install dialog.
+  it('does not call the shims when the only Xcode is a versioned bundle nothing has selected', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+    mockExistsSync.mockImplementation((p) => String(p).startsWith('/Applications/Xcode-27.0.0.app'))
+    mockReaddirSync.mockReturnValue(['Xcode-27.0.0.app'] as never)
+    mockExecSync.mockImplementation((cmd) => {
+      const c = cmd as string
+      if (c === 'xcode-select -p') throw new Error('xcode-select: error: unable to get active developer directory')
+      if (c === 'which adb') throw new Error('not found')
+      return ''
+    })
+
+    const result = await runDoctorChecks('ios')
+    const shimCalls = mockExecSync.mock.calls.map(([c]) => String(c)).filter((c) => /^(xcrun|xcodebuild)\b/.test(c))
+    expect(shimCalls).toEqual([])
+    expect(mockSpawnSync.mock.calls.filter(([c]) => c === 'xcrun' || c === 'xcodebuild')).toEqual([])
+    const xcodeCheck = result.ios?.find((c) => c.label === 'Xcode')
+    expect(xcodeCheck?.detail).toContain('sudo xcode-select -s /Applications/Xcode-27.0.0.app/Contents/Developer')
+  })
+
+  it('suggests the licence and first launch, not xcode-select, when the found Xcode is already selected', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+    mockExistsSync.mockImplementation((p) => String(p).startsWith('/Applications/Xcode-27.0.0.app'))
+    mockExecSync.mockImplementation((cmd) => {
+      const c = cmd as string
+      if (c === 'xcode-select -p') return '/Applications/Xcode-27.0.0.app/Contents/Developer\n'
+      if (c === 'xcodebuild -version') throw new Error('You have not agreed to the Xcode license agreements.')
+      if (c.startsWith('xcrun simctl')) return simctlBooted
+      if (c === 'which adb') throw new Error('not found')
+      return ''
+    })
+
+    const result = await runDoctorChecks('ios')
+    const xcodeCheck = result.ios?.find((c) => c.label === 'Xcode')
+    expect(xcodeCheck?.detail).toContain('xcodebuild -license accept')
+    expect(xcodeCheck?.detail).not.toContain('xcode-select -s')
+  })
+
   it('adb가 PATH엔 없지만 표준 SDK 위치에 있으면 not-in-PATH 진단', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
     vi.stubEnv('ANDROID_HOME', '')

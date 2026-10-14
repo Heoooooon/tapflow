@@ -47,7 +47,7 @@ describe('findXcodeApp', () => {
     expect(findXcodeApp()).toBe('/Applications/Xcode.app')
   })
 
-  it('scans /Applications for a versioned bundle, first by name, as the helpers do', () => {
+  it('scans /Applications for a versioned bundle, first by name', () => {
     selecting('/Library/Developer/CommandLineTools')
     installed('/Applications/Xcode-27.0.0.app', '/Applications/Xcode-26.4.app')
     expect(findXcodeApp()).toBe('/Applications/Xcode-26.4.app')
