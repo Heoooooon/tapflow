@@ -354,7 +354,7 @@ async function checkAndFixXcode(): Promise<SetupStepResult> {
   if (findXcodeApp()) {
     return { label: 'Xcode installed', ok: true, state: 'found' }
   }
-  // Xcode는 App Store에서만 설치 가능 — CLI가 직접 설치할 수 없다.
+  // The CLI cannot install Xcode. It comes from the App Store or from developer.apple.com as a .xip.
   if (!isInteractive()) {
     return {
       label: 'Xcode',
@@ -363,7 +363,7 @@ async function checkAndFixXcode(): Promise<SetupStepResult> {
       detail: `Install Xcode from the App Store: ${XCODE_APPSTORE}`,
     }
   }
-  step('Xcode can only be installed from the App Store.')
+  step('tapflow cannot install Xcode itself. Get it from the App Store, or from https://developer.apple.com/xcode/.')
   const openPrompt = await text({ message: 'Press Enter to open the App Store…' })
   if (isCancel(openPrompt)) {
     return {

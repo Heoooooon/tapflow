@@ -57,7 +57,7 @@ setup is designed to finish in one run. For steps that require installation, it 
 ### iOS
 
 - **Homebrew** is installed if missing.
-- **Xcode** can only be installed from the App Store, so setup opens the App Store and guides you. Press Enter after the install completes to continue.
+- **Xcode** cannot be installed by setup itself, so setup opens the App Store and guides you. Press Enter after the install completes to continue. Xcode is also available from [Apple's developer site](https://developer.apple.com/xcode/).
 - The **Xcode activation** step accepts the license and runs the first-launch setup (`xcode-select`, `xcodebuild -runFirstLaunch`) after consent. These steps require administrator (sudo) access.
 - It downloads a **simulator runtime** when no device is available yet.
 - **Audio permission**: requests the permission simulator audio capture needs, ahead of time. See [Audio](/testing/audio).

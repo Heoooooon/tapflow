@@ -13,7 +13,7 @@ This page takes you from installing tapflow on one Mac to tapping your own build
 - **An Apple Silicon (M-series) Mac**: Intel Macs are not supported. See [Requirements](/operate/requirements) for the supported macOS and Xcode versions.
 - **Node.js 22 or later**
 - **The Mac's administrator password**: `tapflow setup` asks for your sudo password when it installs Homebrew and the JDK, and while it finishes setting up Xcode.
-- **An Apple account**: Xcode comes only from the App Store, so you sign in with an Apple account.
+- **An Apple account**: you sign in with one to download Xcode, from the App Store or from Apple's developer site.
 - **A build to test**: a simulator `.app.zip` or `.tar.gz`/`.tgz` for iOS, an `.apk` for Android. A device `.ipa` cannot be uploaded. An Android APK needs the `arm64-v8a` ABI to install on an Apple Silicon emulator. If you have no build yet, ask your app's developers for a simulator or emulator build; [Upload from CI](/operate/ci-distribution) shows how CI can produce and upload one.
 - **Time**: most of it is `tapflow setup` downloading. Xcode, the simulator runtime, the Android SDK and its system image are large, so a first download takes as long as your network needs. When they are already installed, setup only checks them.
 :::
@@ -44,7 +44,7 @@ On the Mac that will run the simulators and emulators, install what they need in
 tapflow setup
 ```
 
-Setup asks before each step that installs something. Xcode can only be installed from the App Store, so setup opens the App Store for you; press Enter once Xcode is installed and it carries on. During the iOS steps, macOS may show two prompts:
+Setup asks before each step that installs something. Setup cannot install Xcode itself, so it opens the App Store for you; press Enter once Xcode is installed and it carries on. Xcode is also available from [Apple's developer site](https://developer.apple.com/xcode/). During the iOS steps, macOS may show two prompts:
 
 - **Audio recording permission**: needed to send the device's sound to the browser. Click **Allow**.
 - **System extension approval**: the network filter used for iOS network control is a system extension, and macOS asks you to approve it. Without the approval setup ends with `SETUP INCOMPLETE` and names what is left. Everything except network control works without it.

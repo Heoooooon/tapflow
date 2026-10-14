@@ -57,7 +57,7 @@ setup은 한 번에 끝나도록 설계됐습니다. 설치가 필요한 단계�
 ### iOS
 
 - **Homebrew**가 없으면 설치합니다.
-- **Xcode**는 App Store에서만 설치할 수 있어, setup이 App Store를 열어 안내합니다. 설치를 마치고 Enter를 누르면 이어집니다.
+- **Xcode**는 setup이 직접 설치할 수 없어서 App Store를 열어 안내합니다. 설치를 마치고 Enter를 누르면 이어집니다. [Apple 개발자 사이트](https://developer.apple.com/xcode/)에서 받아도 됩니다.
 - **Xcode 활성화** 단계에서는 라이선스 동의와 초기 설정(`xcode-select`, `xcodebuild -runFirstLaunch`)을 동의 후 실행합니다. 이 작업에는 관리자 권한(sudo)이 필요합니다.
 - **시뮬레이터 런타임**이 없어 사용 가능한 기기가 하나도 없으면 런타임을 내려받습니다.
 - **오디오 권한**: 시뮬레이터 오디오 캡처에 필요한 권한을 미리 요청합니다. 자세한 내용은 [오디오](/ko/testing/audio)를 참고하세요.

@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Deleting an app works when one of its builds has a session recording, and removes the files.** It used to fail with an error in that case, and otherwise left every build file of the app on disk. Deleting an app now removes its builds' recordings and files the same way the expiry purge does.
 
+- **`tapflow setup ios` and the docs no longer say Xcode comes only from the App Store.** Setup still opens the App Store, and now also names Apple's developer site, where Xcode is published too.
+
 ## [0.27.1] - 2026-10-09
 
 ### Added
