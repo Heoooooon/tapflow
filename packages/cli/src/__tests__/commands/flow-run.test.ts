@@ -485,6 +485,8 @@ describe('cmdFlowRun keeps each flow\'s video beside the record (A4)', () => {
     await cmdFlowRun([file], { token: 'tflw_pat_x' })
     expect(mocks.bootDevice).toHaveBeenLastCalledWith('s1', 'dev1', { acceptH264: true })
     expect(mocks.setStreamListener.mock.calls.map(([l]) => l === null)).toEqual([false, true])
+    // Before the join: a join with no listener asks the relay for no stream, and the video would be empty.
+    expect(mocks.setStreamListener.mock.invocationCallOrder[0]!).toBeLessThan(mocks.joinSession.mock.invocationCallOrder[0]!)
 
     vi.clearAllMocks()
     await cmdFlowRun([file], { token: 'tflw_pat_x', record: false })

@@ -170,6 +170,8 @@ describe('RelayClient — the input senders mint a correlator and await the ack'
   it('asks for no stream unless a stream listener is set before joining', async () => {
     const without = await capture()
     expect(without.received.find((m) => m['type'] === 'session:start')).toMatchObject({ stream: false })
+    expect(() => without.client.setStreamListener({ frame: () => {}, event: () => {} })).toThrow(/before joinSession/)
+    expect(() => without.client.setStreamListener(null)).not.toThrow()
     without.client.disconnect()
     const first = wss!
     for (const c of first.clients) c.terminate()
@@ -424,7 +426,8 @@ describe('RelayClient.bootDevice — an optional correlator, with a fallback', (
   })
 
   /** A relay that answers `device:boot` however the test asks it to, and records what it received. */
-  async function relay(reply: (msg: Record<string, unknown>) => Record<string, unknown> | null) {
+  /** `listener` is set before the join, as a recording run does: a join without one asks for no stream. */
+  async function relay(reply: (msg: Record<string, unknown>) => Record<string, unknown> | null, listener?: Parameters<RelayClient['setStreamListener']>[0]) {
     const received: Record<string, unknown>[] = []
     wss = new WebSocketServer({ port: 0 })
     wss.on('connection', (ws) => {
@@ -443,6 +446,7 @@ describe('RelayClient.bootDevice — an optional correlator, with a fallback', (
     const port = (wss.address() as { port: number }).port
     const client = new RelayClient(`ws://localhost:${port}`, '')
     await client.connect()
+    if (listener) client.setStreamListener(listener)
     await client.joinSession('s1')
     return { client, received }
   }
@@ -474,10 +478,9 @@ describe('RelayClient.bootDevice — an optional correlator, with a fallback', (
   })
 
   it('hands the held stream\'s frames, chrome and device info to a listener, and nothing once it is removed', async () => {
-    const { client } = await relay(() => null)
     const frames: Buffer[] = []
     const events: [string, unknown][] = []
-    client.setStreamListener({ frame: (d) => frames.push(d), event: (t, p) => events.push([t, p]) })
+    const { client } = await relay(() => null, { frame: (d) => frames.push(d), event: (t, p) => events.push([t, p]) })
     const socket = [...wss!.clients][0]!
     const send = async () => {
       socket.send(Buffer.from('TFFE-frame'), { binary: true })
@@ -495,8 +498,10 @@ describe('RelayClient.bootDevice — an optional correlator, with a fallback', (
   })
 
   it('keeps answering requests when the stream listener throws', async () => {
-    const { client } = await relay((m) => ({ type: 'device:ready', sessionId: 's1', requestId: m['requestId'], payload: { deviceId: 'dev-1' } }))
-    client.setStreamListener({ frame: () => { throw new Error('tap broke') }, event: () => { throw new Error('tap broke') } })
+    const { client } = await relay(
+      (m) => ({ type: 'device:ready', sessionId: 's1', requestId: m['requestId'], payload: { deviceId: 'dev-1' } }),
+      { frame: () => { throw new Error('tap broke') }, event: () => { throw new Error('tap broke') } },
+    )
     const socket = [...wss!.clients][0]!
     socket.send(Buffer.from('TFFE-frame'), { binary: true })
     socket.send(JSON.stringify({ type: 'session:chrome', sessionId: 's1', payload: {} }))
