@@ -603,12 +603,14 @@ describe('runSetupIos', () => {
 
   it('Xcode 미설치 + TTY → App Store 열고 재확인 후 설치되면 ok', async () => {
     setTTY(true)
-    // 처음엔 미설치, 두 번째 호출(재확인)부터 설치됨
-    let calls = 0
-    mockExistsSync.mockImplementation((p) => {
-      if (p === XCODE_APP) return calls++ > 0
-      return false
-    })
+    // Xcode appears once the App Store has been opened. Keyed to that event rather than to a count
+    // of existsSync calls, because finding Xcode checks the same path more than once.
+    let installed = false
+    mockSpawnSync.mockImplementation(((cmd: string) => {
+      if (cmd === 'open') installed = true
+      return okSpawn
+    }) as never)
+    mockExistsSync.mockImplementation((p) => installed && String(p).startsWith(XCODE_APP))
 
     const results = await runSetupIos()
     expect(mockText).toHaveBeenCalled()
