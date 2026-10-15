@@ -102,6 +102,19 @@ describe('runFlow', () => {
     expect(result.steps[0]).not.toHaveProperty('suggestions')
   })
 
+  it('suggests nothing when the screen was read and then the query itself failed', async () => {
+    // The selector is not what failed: the last tree seen is no evidence about it.
+    let calls = 0
+    const driver = fakeDriver([])
+    driver.queryUITree = vi.fn(async () => {
+      if (calls++ === 0) return [el({ label: 'Sign in' })]
+      throw new Error('session ended')
+    })
+    const result = await runFlow(flowOf('steps:\n  - tapOn: "Sign inn"\n'), driver, OPTS)
+    expect(result.status).toBe('failed')
+    expect(result.steps[0]).not.toHaveProperty('suggestions')
+  })
+
   it('suggests nothing when no screen was ever read', async () => {
     const driver = fakeDriver([])
     driver.queryUITree = vi.fn(async () => { throw new TransientQueryError('agent busy') })

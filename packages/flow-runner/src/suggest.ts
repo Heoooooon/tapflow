@@ -137,7 +137,8 @@ export function similarity(wanted: string, candidate: string): number {
     return ratio >= 0.5 ? 0.7 + 0.2 * ratio : 0
   }
   if (Math.min(wl, cl) <= SHORT) return 0
-  // Hangul by jamo: one syllable is one code point, so "다음" and "다른" would otherwise be one edit apart.
+  // Hangul by jamo: a syllable is one code point, so a one-jamo typo ("결재" for "결제") would count as a whole
+  // letter wrong. Short words are already excluded above; this is what lets a longer label with such typos match.
   const a = [...w.normalize('NFD')]
   const b = [...c.normalize('NFD')]
   if (b.length > a.length * 3) return 0

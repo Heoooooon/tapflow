@@ -88,6 +88,11 @@ describe('suggestSelectors', () => {
     expect(suggestSelectors([el('주문하기 완료')], { text: '주문하기 왼료' })[0]!.yaml).toBe('tapOn: "주문하기 완료"')
   })
 
+  it('counts a Korean typo by the jamo that is wrong, not the whole syllable', () => {
+    // Two one-jamo typos in six syllables: a third of the letters by syllable, a tenth by jamo.
+    expect(suggestSelectors([el('결제완료하기')], { text: '결재완료햐기' })[0]?.yaml).toBe('tapOn: "결제완료하기"')
+  })
+
   it('leaves out what is off the screen', () => {
     const below = el('Sign in', { frame: { x: 0.1, y: 1.4, width: 0.2, height: 0.05 } })
     expect(suggestSelectors([below], { text: 'Sign inn' })).toEqual([])
