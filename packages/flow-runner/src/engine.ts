@@ -332,7 +332,10 @@ async function waitForScreen(driver: FlowDriver, timeoutMs: number, pollInterval
       await delay(Math.min(pollIntervalMs, remaining))
     }
   } catch {
-    // Not this step's to report: see above.
+    // Not this step's to report, permanent errors included. `launchApp` never read the tree before, so failing
+    // here would fail flows that use no selector on any agent whose tree is unusable — one predating the frame
+    // clipping answers `invalid response shape`, permanently. A session that is really gone fails the next step,
+    // which names it the same way.
   }
 }
 
