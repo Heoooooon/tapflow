@@ -309,6 +309,39 @@ describe('Run detail', () => {
     expect(screen.getAllByText('Environment problem')).toHaveLength(1)
   })
 
+  // B2: a failed tapOn's suggestions, each in a field (selectable without a clipboard) with a copy button.
+  it('offers a failed tapOn\'s suggested lines to copy, and moves to the line when there is no clipboard', async () => {
+    stubRelay(() => Response.json(detail({
+      status: 'failed', exitCode: 1, failureKind: 'product',
+      flows: [{
+        idx: 0, name: 'login', file: null, status: 'failed', device: null, failureKind: 'product', failureMessage: 'no element', durationMs: 900, hasScreenshot: false,
+        steps: [
+          { index: 0, name: 'launchApp', status: 'passed', durationMs: 400 },
+          { index: 1, name: 'tapOn("Sign inn")', status: 'failed', durationMs: 500, message: 'no element matched "Sign inn"',
+            suggestions: [{ yaml: 'tapOn: "Sign in"', element: { role: 'button', label: 'Sign in' } }] },
+        ],
+      }],
+    })))
+    renderAt('/automation/runs/r1')
+    const line = await screen.findByRole('textbox', { name: 'Suggested line 1 for tapOn("Sign inn")' })
+    expect((line as HTMLInputElement).value).toBe('tapOn: "Sign in"')
+    expect((line as HTMLInputElement).readOnly).toBe(true)
+    vi.stubGlobal('navigator', { ...navigator, clipboard: undefined })
+    fireEvent.click(screen.getByRole('button', { name: 'Copy suggested line 1' }))
+    await waitFor(() => expect(document.activeElement).toBe(line))
+  })
+
+  it('shows no suggestions where a step has none', async () => {
+    stubRelay(() => Response.json(detail({
+      status: 'failed', exitCode: 1, failureKind: 'product',
+      flows: [{ idx: 0, name: 'login', file: null, status: 'failed', device: null, failureKind: 'product', failureMessage: 'x', durationMs: 1, hasScreenshot: false,
+        steps: [{ index: 0, name: 'assertVisible("Pay")', status: 'failed', durationMs: 1, message: 'no element' }] }],
+    })))
+    renderAt('/automation/runs/r1')
+    await screen.findByText('no element')
+    expect(screen.queryByText(/Try instead/)).toBeNull()
+  })
+
   it('shows the screen a passed flow ended on, as its evidence', async () => {
     stubRelay(() => Response.json(detail({
       flows: [{ idx: 0, name: 'login', file: null, status: 'passed', device: null, failureKind: null, failureMessage: null, durationMs: 1200, steps: [], hasScreenshot: true }],

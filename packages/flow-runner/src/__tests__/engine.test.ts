@@ -79,6 +79,37 @@ describe('runFlow', () => {
     expect(driver.tap).not.toHaveBeenCalled()
   })
 
+  // B2: a tapOn that misses carries lines to try, from the screen it missed on.
+  it('attaches suggestions to a tapOn that matched nothing, from the last screen it saw', async () => {
+    const driver = fakeDriver([[el({ label: 'Sign in' }), el({ label: 'Help', role: 'text' })]])
+    const result = await runFlow(flowOf('steps:\n  - tapOn: "Sign inn"\n'), driver, OPTS)
+    expect(result.status).toBe('failed')
+    expect(result.steps[0]!.suggestions).toEqual([{ yaml: 'tapOn: "Sign in"', element: { role: 'button', label: 'Sign in' } }])
+  })
+
+  it('attaches the matches, told apart, to a tapOn that matched several', async () => {
+    const driver = fakeDriver([[el({ label: '삭제' }), el({ label: '삭제', role: 'cell' })]])
+    const result = await runFlow(flowOf('steps:\n  - tapOn: "삭제"\n'), driver, OPTS)
+    expect(result.steps[0]!.suggestions?.map((x) => x.yaml)).toEqual([
+      'tapOn: { label: "삭제", role: "button" }', 'tapOn: { label: "삭제", role: "cell" }',
+    ])
+  })
+
+  it('suggests nothing for an assertVisible that misses: the app may be what is wrong', async () => {
+    const driver = fakeDriver([[el({ label: 'Pay now' })]])
+    const result = await runFlow(flowOf('steps:\n  - assertVisible: "Pay nw"\n'), driver, OPTS)
+    expect(result.status).toBe('failed')
+    expect(result.steps[0]).not.toHaveProperty('suggestions')
+  })
+
+  it('suggests nothing when no screen was ever read', async () => {
+    const driver = fakeDriver([])
+    driver.queryUITree = vi.fn(async () => { throw new TransientQueryError('agent busy') })
+    const result = await runFlow(flowOf('steps:\n  - tapOn: "Sign in"\n'), driver, OPTS)
+    expect(result.failureKind).toBe('environment')
+    expect(result.steps[0]).not.toHaveProperty('suggestions')
+  })
+
   it('disambiguates a shared label by role', async () => {
     const driver = fakeDriver([[
       el({ role: 'button', label: 'New Orders', frame: { x: 0.1, y: 0.2, width: 0.2, height: 0.1 } }),

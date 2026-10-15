@@ -97,6 +97,7 @@ function flowReport(result: FlowResult, device: DeviceInfo): FlowReport {
     steps: result.steps.map((st) => ({
       index: st.index, name: st.name, status: st.status, durationMs: st.durationMs,
       ...(st.message ? { message: st.message } : {}),
+      ...(st.suggestions ? { suggestions: st.suggestions } : {}),
     })),
     device: { id: device.id, name: device.name, platform: device.platform },
   }
@@ -263,6 +264,8 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
       console.log(result.status === 'passed' ? `✓ (${(result.durationMs / 1000).toFixed(1)}s)` : '✗')
       if (result.status === 'failed') {
         console.error(`  ${result.failureMessage}`)
+        // Lines that tap an element on the screen it failed on (B2): a misspelled or ambiguous tapOn's likely fix.
+        for (const s of result.steps.find((st) => st.status === 'failed')?.suggestions ?? []) console.error(`  try: ${s.yaml}`)
         if (result.failureScreenshot) {
           // Runtime data belongs in the gitignored .tapflow/artifacts/, and the
           // index prefix keeps same-named flows from different directories

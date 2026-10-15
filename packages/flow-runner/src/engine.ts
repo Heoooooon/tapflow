@@ -1,5 +1,7 @@
 import type { UIElement } from '@tapflowio/agent-core'
 import type { Flow, Selector, Step, ScrollDirection } from './schema.js'
+import { matchSelector } from './selector.js'
+import { suggestSelectors, type SelectorSuggestion } from './suggest.js'
 import { EnvironmentStepError, isEnvironmentStepFailure, TransientQueryError } from './errors.js'
 
 // Transport-agnostic device surface the engine drives (DIP): the relay-backed
@@ -37,7 +39,12 @@ export interface StepResult {
   status: 'passed' | 'failed' | 'skipped'
   durationMs: number
   message?: string
+  /** A `tapOn` that matched nothing or several: lines to try instead, from the screen it failed on (B2). Each taps
+   *  exactly the element it names on that screen. Absent when nothing on it was close. */
+  suggestions?: SelectorSuggestion[]
 }
+
+export type { SelectorSuggestion }
 
 export interface FlowResult {
   name: string
@@ -133,38 +140,11 @@ function normalizeTimeoutMs(value: number, label: string): number {
   return rounded
 }
 
-// Selector resolution: explicit id → identifier only; explicit label → exact then partial; bare text →
-// exact identifier, then exact label, then partial label. role then narrows by element kind, and index
-// (0-based) picks one of the remaining matches — so a label shared by e.g. a button and its inner text
-// can be disambiguated with { label, role: button }, and a label-less row with { role: cell, index }.
-export function matchSelector(tree: UIElement[], sel: Selector): UIElement[] {
-  let pool: UIElement[]
-  if (sel.text !== undefined) {
-    const byId = tree.filter((e) => e.identifier === sel.text)
-    const exact = tree.filter((e) => e.label === sel.text)
-    pool = byId.length > 0
-      ? byId
-      : exact.length > 0
-        ? exact
-        : tree.filter((e) => sel.text !== undefined && sel.text.length > 0 && e.label.includes(sel.text))
-  } else {
-    pool = tree
-    if (sel.id !== undefined) pool = pool.filter((e) => e.identifier === sel.id)
-    if (sel.label !== undefined) {
-      const label = sel.label
-      const exact = pool.filter((e) => e.label === label)
-      pool = exact.length > 0 ? exact : pool.filter((e) => e.label.includes(label))
-    }
-  }
-  if (sel.role !== undefined) pool = pool.filter((e) => e.role === sel.role)
-  if (sel.index !== undefined) {
-    const el = pool[sel.index]
-    return el ? [el] : []
-  }
-  return pool
-}
+export { matchSelector } from './selector.js'
 
-class StepFailure extends Error {}
+class StepFailure extends Error {
+  suggestions?: SelectorSuggestion[]
+}
 
 // Query the tree, surfacing a transient failure (foreground race, idle timeout, agent/network blip)
 // so the polling caller keeps waiting until its deadline. Permanent failures propagate and fail now.
@@ -219,23 +199,35 @@ async function resolveOne(
   const deadline = Date.now() + waitMs
   let lastError: TransientQueryError | undefined
   let sawTree = false
-  for (;;) {
-    const q = await queryOrRetry(driver, deadline)
-    if ('tree' in q) {
-      sawTree = true
-      lastError = undefined // a successful query clears any earlier transient error
-      const matches = matchSelector(q.tree, sel)
-      if (matches.length === 1) return matches[0]
-      if (matches.length > 1) {
-        const described = matches.slice(0, 5).map((m) => `${m.role} "${m.label}"${m.identifier ? ` id=${m.identifier}` : ''}`).join(' | ')
-        throw new StepFailure(`${matches.length} elements match ${describeSelector(sel)} — add an index or a more specific role/label (candidates: ${described})`)
+  // The last screen seen, for suggestions if the step fails on it. A failure with no tree behind it is the
+  // environment's, and has nothing to suggest from.
+  let lastTree: UIElement[] | null = null
+  try {
+    for (;;) {
+      const q = await queryOrRetry(driver, deadline)
+      if ('tree' in q) {
+        sawTree = true
+        lastTree = q.tree
+        lastError = undefined // a successful query clears any earlier transient error
+        const matches = matchSelector(q.tree, sel)
+        if (matches.length === 1) return matches[0]
+        if (matches.length > 1) {
+          const described = matches.slice(0, 5).map((m) => `${m.role} "${m.label}"${m.identifier ? ` id=${m.identifier}` : ''}`).join(' | ')
+          throw new StepFailure(`${matches.length} elements match ${describeSelector(sel)} — add an index or a more specific role/label (candidates: ${described})`)
+        }
+      } else {
+        lastError = q.transient
       }
-    } else {
-      lastError = q.transient
+      const base = `no element matched ${describeSelector(sel)} within ${waitMs / 1000}s`
+      if (Date.now() >= deadline) throw deadlineError(base, lastError, sawTree)
+      await waitForNextPoll(deadline, pollIntervalMs, base, lastError, sawTree)
     }
-    const base = `no element matched ${describeSelector(sel)} within ${waitMs / 1000}s`
-    if (Date.now() >= deadline) throw deadlineError(base, lastError, sawTree)
-    await waitForNextPoll(deadline, pollIntervalMs, base, lastError, sawTree)
+  } catch (e) {
+    if (e instanceof StepFailure && lastTree) {
+      const suggestions = suggestSelectors(lastTree, sel)
+      if (suggestions.length > 0) e.suggestions = suggestions
+    }
+    throw e
   }
 }
 
@@ -335,7 +327,8 @@ export async function runFlow(flow: Flow, driver: FlowDriver, options: EngineOpt
       const message = e instanceof Error ? e.message : String(e)
       failureMessage = `${name}: ${message}`
       if (failureKind === undefined) failureKind = isEnvironmentStepFailure(e) ? 'environment' : 'product'
-      steps.push({ index, name, status: 'failed', durationMs: Date.now() - stepStart, message })
+      const suggestions = e instanceof StepFailure ? e.suggestions : undefined
+      steps.push({ index, name, status: 'failed', durationMs: Date.now() - stepStart, message, ...(suggestions ? { suggestions } : {}) })
       options.onStep?.({ index, name, phase: 'end', status: 'failed' })
       failureScreenshot = await captureScreenshot(driver, FAILURE_SCREENSHOT_TIMEOUT_MS)
     }

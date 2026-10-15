@@ -202,6 +202,29 @@ describe('flow run records', () => {
     expect(r.body.flows[1]).toMatchObject({ name: 'checkout', status: 'not-run' })
   })
 
+  // B2: a failed tapOn's suggestions are stored whole or not at all — a cut line is a different selector.
+  it('keeps a failed step\'s suggestions, at most three, and drops one it would have to cut', async () => {
+    const id = await create()
+    const ok = (label: string) => ({ yaml: `tapOn: "${label}"`, element: { role: 'button', label } })
+    const step = {
+      index: 0, name: 'tapOn("Sign inn")', status: 'failed', durationMs: 900, message: 'no element',
+      suggestions: [
+        ok('Sign in'),
+        { yaml: `tapOn: "${'x'.repeat(700)}"`, element: { role: 'button', label: 'x' } },
+        { yaml: 'assertVisible: "Sign in"', element: { role: 'button', label: 'Sign in' } },
+        { yaml: 'tapOn: { id: "login" }', element: { role: 'button', label: 'Log in', identifier: 'login', extra: 1 } },
+        ok('Sign up'), ok('Sign out'),
+      ],
+    }
+    await call('POST', `/api/v1/runs/${id}/flows/0`, bearer(PAT_CI), { status: 'failed', durationMs: 900, steps: [step] })
+    const r = await call('GET', `/api/v1/runs/${id}`, bearer(PAT_VIEW))
+    expect((r.body.flows[0].steps as { suggestions?: unknown }[])[0]!.suggestions).toEqual([
+      ok('Sign in'),
+      { yaml: 'tapOn: { id: "login" }', element: { role: 'button', label: 'Log in', identifier: 'login' } },
+      ok('Sign up'),
+    ])
+  })
+
   it('refuses writes after the runner finished the run', async () => {
     const id = await create()
     await call('POST', `/api/v1/runs/${id}/finish`, bearer(PAT_CI), { status: 'passed', exitCode: 0 })

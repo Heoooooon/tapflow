@@ -153,6 +153,8 @@ export interface RunStep {
   status: 'passed' | 'failed' | 'skipped'
   durationMs: number
   message?: string
+  /** A failed `tapOn`'s lines to try instead, each tapping one element on the screen it failed on (B2). */
+  suggestions?: { yaml: string; element: { role: string; label: string; identifier?: string } }[]
 }
 
 /** A flow of a run: reported, or still to come (`running` / `pending`), or never reached (`not-run`). */

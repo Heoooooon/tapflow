@@ -28,7 +28,10 @@ export interface FlowReport {
   durationMs: number
   failureKind?: 'environment' | 'product'
   failureMessage?: string
-  steps: { index: number; name: string; status: string; durationMs: number; message?: string }[]
+  steps: {
+    index: number; name: string; status: string; durationMs: number; message?: string
+    suggestions?: { yaml: string; element: { role: string; label: string; identifier?: string } }[]
+  }[]
   device?: { id: string; name: string; platform?: string }
 }
 

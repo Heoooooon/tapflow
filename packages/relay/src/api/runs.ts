@@ -19,6 +19,9 @@ const MAX_NAME = 500
 const MAX_MESSAGE = 4000
 const MAX_STEP_MESSAGE = 2000
 const MAX_CLIENT_ID = 200
+const MAX_SUGGESTIONS = 3
+const MAX_SUGGESTION_YAML = 600
+const MAX_SUGGESTION_FIELD = 200
 const PAGE_DEFAULT = 50
 const PAGE_MAX = 100
 /** A run with no build has nothing else to expire with. */
@@ -69,6 +72,27 @@ function isObj(v: unknown): v is Obj {
 function str(v: unknown, max: number): string | null {
   if (typeof v !== 'string' || v.length === 0) return null
   return v.length > max ? v.slice(0, max) : v
+}
+
+/**
+ * A failed `tapOn`'s suggested lines (B2), kept whole or not at all: unlike a message, a cut YAML line is a different
+ * selector — `"Pay now la` matches by part — so one over its cap is dropped, never shortened.
+ */
+function suggestions(v: unknown): { yaml: string; element: { role: string; label: string; identifier?: string } }[] {
+  if (!Array.isArray(v)) return []
+  const whole = (x: unknown, max: number) => (typeof x === 'string' && x.length <= max ? x : null)
+  const out: { yaml: string; element: { role: string; label: string; identifier?: string } }[] = []
+  for (const s of v) {
+    if (out.length === MAX_SUGGESTIONS) break
+    if (!isObj(s) || !isObj(s.element)) continue
+    const yaml = whole(s.yaml, MAX_SUGGESTION_YAML)
+    const role = whole(s.element.role, 50)
+    const label = whole(s.element.label, MAX_SUGGESTION_FIELD)
+    const identifier = s.element.identifier === undefined ? undefined : whole(s.element.identifier, MAX_SUGGESTION_FIELD)
+    if (!yaml || !yaml.startsWith('tapOn: ') || role === null || label === null || identifier === null) continue
+    out.push({ yaml, element: { role, label, ...(identifier ? { identifier } : {}) } })
+  }
+  return out
 }
 
 function nonNegInt(v: unknown): number | null {
@@ -305,18 +329,20 @@ export async function handleReportFlow(
     return json(res, 400, { error: `steps must be an array of at most ${MAX_STEPS}` })
   }
   // Rebuilt field by field, so what is stored is only what the page renders.
-  const steps: { index: number; name: string; status: string; durationMs: number; message?: string }[] = []
+  const steps: { index: number; name: string; status: string; durationMs: number; message?: string; suggestions?: ReturnType<typeof suggestions> }[] = []
   for (const s of body.steps as unknown[]) {
     if (!isObj(s) || typeof s.status !== 'string' || !STEP_STATUSES.has(s.status)) {
       return json(res, 400, { error: 'every step needs a status of passed, failed or skipped' })
     }
     const message = str(s.message, MAX_STEP_MESSAGE)
+    const suggested = s.status === 'failed' ? suggestions(s.suggestions) : []
     steps.push({
       index: nonNegInt(s.index) ?? steps.length,
       name: str(s.name, MAX_NAME) ?? '',
       status: s.status,
       durationMs: nonNegInt(s.durationMs) ?? 0,
       ...(message !== null ? { message } : {}),
+      ...(suggested.length > 0 ? { suggestions: suggested } : {}),
     })
   }
   const planned = (JSON.parse(run.flows_json) as { name: string; file: string | null }[])[idx]
