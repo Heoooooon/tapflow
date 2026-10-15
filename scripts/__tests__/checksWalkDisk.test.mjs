@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync, mkdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { sources, SKIP_DIRS, SKIP_PATHS, SKIP_PATHS_SOURCE } from './sourceFiles.mjs'
+import { sources, SKIP_DIRS, SKIP_PATHS, SKIP_PATHS_SOURCE, listDir, readListed, statListed } from './sourceFiles.mjs'
+import { tmpdir } from 'node:os'
 
 // #522. Three static checks asked git which files exist. `git ls-files` reports **tracked** files only, and a
 // file that was just created is exactly the state a new violation is in — so each of those checks was blind to
@@ -100,16 +101,36 @@ describe('static checks enumerate the tree from disk, not from git', () => {
     ).toEqual([])
   })
 
+  it('a walker skips what was removed after it was listed, and nothing else', () => {
+    // Other tests plant files in the tree for a moment, in parallel workers (`testsReadSource`'s probe in
+    // `packages/*/src/__tests__`, the probes in this file under `scripts/`). A walker that listed one and then
+    // read it failed on ENOENT, which is a failure about nothing: 2 of 12 full runs under load.
+    const dir = mkdtempSync(join(tmpdir(), 'walk-vanish-'))
+    try {
+      const gone = join(dir, 'gone')
+      expect(listDir(gone)).toEqual([])
+      expect(statListed(join(gone, 'x.ts'))).toBeNull()
+      expect(readListed(join(gone, 'x.ts'))).toBeNull()
+      writeFileSync(join(dir, 'here.ts'), 'export {}\n')
+      expect(readListed(join(dir, 'here.ts'))).toBe('export {}\n')
+      // Only a removal is skipped: reading a directory as a file is still an error a check must hear about.
+      expect(() => readListed(dir)).toThrow(/EISDIR/)
+      expect(() => listDir(join(dir, 'here.ts'))).toThrow(/ENOTDIR/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('the walk sees a file git has never heard of', () => {
     // The assertions above are about how the checks are written. This one is about what the walk does, and the
     // pair is what makes the rule real: alone, the others would still pass if `sources` itself were rewritten
     // to shell out.
     //
-    // The probe lives under `scripts/`, deliberately not under `packages/`. Nothing walks `scripts/` for
-    // sources, whereas three checks walk `packages/` — and vitest runs files in parallel, so a probe there
-    // shares a namespace with a tree another worker is enumerating. A leaked directory would then be reported
-    // as a real path by `clientOutboundTyped`, and a removal mid-walk would break it with an ENOENT that has
-    // nothing to do with its subject.
+    // The probe lives under `scripts/`, deliberately not under `packages/`, where three checks walk for
+    // sources — a leaked directory there would be reported as a real path by `clientOutboundTyped`.
+    // `scripts/` is not out of every walk, though: `agentReadableDocs` walks the whole repo for text files. So
+    // a removal mid-walk is handled where it can happen anywhere, in the walkers (`listDir`, `readListed`,
+    // below), and not by where the probe is put.
     const dir = mkdtempSync(join(scriptsDir, '__tests__', '.walkprobe-'))
     try {
       writeFileSync(join(dir, 'brandNew.ts'), 'export const x = 1\n')

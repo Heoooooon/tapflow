@@ -71,7 +71,7 @@ import {
   isTranslation,
   pageUrl,
 } from '../../docs/.vitepress/agent-artifacts.mjs'
-import { SKIP_PATHS, SKIP_PATHS_SOURCE } from './sourceFiles.mjs'
+import { SKIP_PATHS, SKIP_PATHS_SOURCE, listDir, readListed } from './sourceFiles.mjs'
 import config from '../../docs/.vitepress/config.ts'
 
 const ROOT = join(import.meta.dirname, '..', '..')
@@ -444,7 +444,7 @@ const SKIP = new Set(['node_modules', 'dist', 'build', '.next', 'coverage', '.tu
 // directory and fixing one of them left the other racing the dashboard build.
 
 function textFiles(dir = ROOT, out = []) {
-  for (const e of readdirSync(dir, { withFileTypes: true })) {
+  for (const e of listDir(dir, { withFileTypes: true })) {
     const child = join(dir, e.name)
     if (e.isDirectory()) {
       if (!SKIP.has(e.name) && !SKIP_PATHS.has(child)) textFiles(child, out)
@@ -483,7 +483,8 @@ describe('the site has one origin', () => {
     ).toContain(SKIP_PATHS_SOURCE.mentions)
 
     const offenders = files
-      .filter((f) => /https:\/\/tapflow\.dev/.test(readFileSync(f, 'utf8')))
+      // `readListed`: this walk covers the whole repo, `scripts/` included, where other tests plant temp files.
+      .filter((f) => /https:\/\/tapflow\.dev/.test(readListed(f) ?? ''))
       .map((f) => f.slice(ROOT.length + 1))
     expect(offenders).toEqual([])
 
