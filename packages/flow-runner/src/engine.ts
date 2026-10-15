@@ -175,12 +175,24 @@ async function queryOrRetry(
   driver: FlowDriver,
   deadline: number,
 ): Promise<{ tree: UIElement[] } | { transient: TransientQueryError }> {
+  const signal = AbortSignal.timeout(Math.max(1, deadline - Date.now()))
   try {
-    return { tree: await driver.queryUITree(AbortSignal.timeout(Math.max(1, deadline - Date.now()))) }
+    return { tree: await driver.queryUITree(signal) }
   } catch (e) {
-    if (e instanceof TransientQueryError) return { transient: e }
+    if (e instanceof TransientQueryError) {
+      if (signal.aborted) cutAtDeadline.add(e)
+      return { transient: e }
+    }
     throw e
   }
+}
+
+/** Queries this runner cut off itself because the step's deadline came, not because anything failed. */
+const cutAtDeadline = new WeakSet<TransientQueryError>()
+
+/** A query cut off at the deadline does not replace a real error seen before it. */
+function latestError(prev: TransientQueryError | undefined, next: TransientQueryError): TransientQueryError {
+  return prev && cutAtDeadline.has(next) ? prev : next
 }
 
 function withLastError(base: string, lastError: TransientQueryError | undefined): string {
@@ -199,8 +211,13 @@ function queryDeadlineFailure(base: string, lastError: TransientQueryError | und
 // was seen, the element genuinely never matched, so the deadline stays a
 // StepFailure (product). Both exits — the direct check and the wait below —
 // go through here, since timing decides which one fires and they must agree.
+//
+// A query this runner cut off at the deadline is left out of a product failure's message: it names nothing that went
+// wrong, and read as `last query error: … aborted due to timeout` it sent people after the agent when the selector
+// simply never matched. With no tree seen it stays: then the query never answering is the finding.
 function deadlineError(base: string, lastError: TransientQueryError | undefined, sawTree: boolean): Error {
-  return sawTree ? new StepFailure(withLastError(base, lastError)) : queryDeadlineFailure(base, lastError)
+  if (!sawTree) return queryDeadlineFailure(base, lastError)
+  return new StepFailure(withLastError(base, lastError && cutAtDeadline.has(lastError) ? undefined : lastError))
 }
 
 async function waitForNextPoll(deadline: number, pollIntervalMs: number, base: string, lastError: TransientQueryError | undefined, sawTree: boolean): Promise<void> {
@@ -237,7 +254,7 @@ async function resolveOne(
           throw new StepFailure(`${matches.length} elements match ${describeSelector(sel)} — add an index or a more specific role/label (candidates: ${described})`)
         }
       } else {
-        lastError = q.transient
+        lastError = latestError(lastError, q.transient)
       }
       const base = `no element matched ${describeSelector(sel)} within ${waitMs / 1000}s`
       if (Date.now() >= deadline) throw deadlineError(base, lastError, sawTree)
@@ -264,7 +281,7 @@ async function waitVisible(driver: FlowDriver, sel: Selector, timeoutMs: number,
       lastError = undefined // a successful query clears any earlier transient error
       if (matchSelector(q.tree, sel).length > 0) return
     } else {
-      lastError = q.transient
+      lastError = latestError(lastError, q.transient)
     }
     const base = `no element matched ${describeSelector(sel)} within ${waitMs / 1000}s`
     if (Date.now() >= deadline) throw deadlineError(base, lastError, sawTree)
@@ -285,9 +302,34 @@ async function waitNotVisible(driver: FlowDriver, sel: Selector, timeoutMs: numb
       if (matchSelector(q.tree, sel).length === 0) return
     } else {
       // A transient failure means we can't confirm the element is gone — keep polling, don't return.
-      lastError = q.transient
+      lastError = latestError(lastError, q.transient)
     }
     const base = `element ${describeSelector(sel)} is still visible after ${waitMs / 1000}s`
+    if (Date.now() >= deadline) throw deadlineError(base, lastError, sawTree)
+    await waitForNextPoll(deadline, pollIntervalMs, base, lastError, sawTree)
+  }
+}
+
+/**
+ * `launchApp` ends when the app shows a screen, not when its process starts. A coordinate step sent before that —
+ * `scroll`, `swipe`, `inputText`, `pressKey` — is acknowledged by the agent and dropped by the app, so it passed
+ * while doing nothing and the flow failed one step later under the wrong name (seen on iOS: `scroll` right after
+ * `launchApp`, 5 of 5). Selector steps never had this problem: they poll. The first non-empty tree is the signal.
+ */
+async function waitForScreen(driver: FlowDriver, timeoutMs: number, pollIntervalMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  let lastError: TransientQueryError | undefined
+  let sawTree = false
+  for (;;) {
+    const q = await queryOrRetry(driver, deadline)
+    if ('tree' in q) {
+      sawTree = true
+      lastError = undefined
+      if (q.tree.length > 0) return
+    } else {
+      lastError = latestError(lastError, q.transient)
+    }
+    const base = `the app showed no screen within ${timeoutMs / 1000}s of launching`
     if (Date.now() >= deadline) throw deadlineError(base, lastError, sawTree)
     await waitForNextPoll(deadline, pollIntervalMs, base, lastError, sawTree)
   }
@@ -305,7 +347,10 @@ async function executeStep(step: Step, flow: Flow, driver: FlowDriver, timeoutMs
       await driver.clearState(appId)
       return
     }
-    case 'launchApp': return driver.launchApp()
+    case 'launchApp': {
+      await driver.launchApp()
+      return waitForScreen(driver, timeoutMs, pollIntervalMs)
+    }
     case 'tapOn': {
       const el = await resolveOne(driver, step.selector, timeoutMs, pollIntervalMs)
       return driver.tap(round4(el.frame.x + el.frame.width / 2), round4(el.frame.y + el.frame.height / 2))

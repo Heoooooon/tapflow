@@ -101,7 +101,8 @@ describe('XCUITreeReader', () => {
       const reader = new XCUITreeReader(native)
       await reader.read('udid-A', 'com.app')
       reader.warm('udid-B')
-      await Promise.resolve()
+      // Past any health probe and launch the warm-up could start.
+      await new Promise((r) => setTimeout(r, 10))
       expect(native.spawn).toHaveBeenCalledTimes(1)
       expect(native.terminateHost).not.toHaveBeenCalled()
       reader.stop()

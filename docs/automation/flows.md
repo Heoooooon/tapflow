@@ -50,7 +50,7 @@ The vocabulary is deliberately small. These ten cover most scenarios.
 | Step | Form | Behavior |
 |------|------|----------|
 | `clearState` | keyword or `clearState: <bundleId>` | Resets the app data. The keyword form uses the top-level `appId`. |
-| `launchApp` | keyword | Launches the build under test. |
+| `launchApp` | keyword | Launches the build under test and waits until the app shows a screen. |
 | `tapOn` | selector | Taps the center of the matched element. |
 | `inputText` | string | Types text into the focused input field. |
 | `pressKey` | key name | Presses a keyboard key (`Enter`, `Backspace`, `Escape`, …). |
@@ -101,6 +101,8 @@ The object form needs at least one of `id`, `label`, or `role`; `role`/`index` r
 ### Resetting state
 
 `clearState` wipes the app data so every run starts from the same state. It uses `pm clear` on Android and empties the app data container on iOS. The installed binary survives either way, so you can follow `clearState` with `launchApp`.
+
+If the app is already running, `launchApp` does not restart it: it brings the app forward on whatever screen it was last on. A flow can then start from a screen an earlier run or a manual test left behind, so a flow that must start from the app's first screen puts `clearState` before `launchApp`. `clearState` stops the app before wiping its data.
 
 ```yaml
 # uses the top-level appId
