@@ -124,6 +124,18 @@ describe('suggestSelectors', () => {
     }
   })
 
+  it('never offers a blank label as the line, even when the element is found by its id', () => {
+    const s = suggestSelectors([el('   ', { identifier: 'pay-now-btn' })], { text: 'pay-now-btn-typo' })
+    expect(s.map((x) => x.yaml)).toEqual(['tapOn: { id: "pay-now-btn" }'])
+  })
+
+  it('stays fast when the selector itself is a pasted paragraph', () => {
+    const tree = Array.from({ length: 70 }, (_, i) => el(`Button ${i} with some label`))
+    const t0 = performance.now()
+    expect(suggestSelectors(tree, { text: 'x'.repeat(500_000) })).toEqual([])
+    expect(performance.now() - t0).toBeLessThan(500)
+  })
+
   it('stays fast on a large tree', () => {
     const tree = Array.from({ length: 5000 }, (_, i) => el(`Item number ${i} with a fairly long description text`))
     const t0 = performance.now()

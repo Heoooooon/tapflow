@@ -55,7 +55,7 @@ export function suggestSelectors(tree: UIElement[], sel: Selector): SelectorSugg
  */
 function firstVerifiedForm(tree: UIElement[], target: UIElement, sel: Selector): string | null {
   const timeout = sel.timeoutMs !== undefined ? sel.timeoutMs / 1000 : undefined
-  const named = target.role !== 'input' && target.label.length > 0 && target.label.length <= MAX_NAME
+  const named = target.role !== 'input' && target.label.trim().length > 0 && target.label.length <= MAX_NAME
   const id = target.identifier && target.identifier.length <= MAX_NAME ? target.identifier : undefined
 
   const byLabel: Form[] = named
@@ -125,7 +125,8 @@ function normalise(s: string): string {
 
 /** 0 for unrelated, 1 for the same text once case, spacing and punctuation are set aside. */
 export function similarity(wanted: string, candidate: string): number {
-  if (candidate.length === 0 || candidate.length > MAX_NAME) return 0
+  // Both sides: a pasted paragraph as the selector would otherwise run the edit distance against every element.
+  if (candidate.length === 0 || candidate.length > MAX_NAME || wanted.length > MAX_NAME) return 0
   const w = normalise(wanted)
   const c = normalise(candidate)
   if (!w || !c) return 0
