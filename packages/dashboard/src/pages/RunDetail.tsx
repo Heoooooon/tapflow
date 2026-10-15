@@ -1,9 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { toast } from 'sonner'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Eye, ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { TechLabel } from '@/components/ui/tech-label'
 import { useBreadcrumb } from '@/hooks/useBreadcrumb'
 import { getRun, queryKeys, runScreenshotUrl } from '@/lib/queries'
@@ -11,7 +13,7 @@ import {
   UNREPORTED_FLOW_LABEL, failureBadge, formatAgo, formatDuration, runBuildLabel,
   pollWhileRunning, runDuration, runOutcomeText, runSourceLabel, shortCommit,
 } from '@/lib/runs'
-import type { RunDetail as Run, RunFlow } from '@/lib/types'
+import type { RunDetail as Run, RunFlow, RunStep } from '@/lib/types'
 import { RunVideo } from '@/components/runs/RunVideo'
 
 /**
@@ -150,6 +152,7 @@ function FlowItem({ runId, flow }: { runId: string; flow: RunFlow }) {
                   <span className="min-w-0 flex-1">
                     {step.name}
                     {step.message && <span className="block text-muted-foreground">{step.message}</span>}
+                    {step.suggestions && step.suggestions.length > 0 && <StepSuggestions step={step} />}
                   </span>
                   <TechLabel className="text-muted-foreground">{formatDuration(step.durationMs)}</TechLabel>
                 </li>
@@ -166,6 +169,42 @@ function FlowItem({ runId, flow }: { runId: string; flow: RunFlow }) {
         <RunVideo runId={runId} idx={flow.idx} flowName={flow.name} summary={flow.video} running={!flow.video.ended} />
       )}
     </li>
+  )
+}
+
+/**
+ * A failed `tapOn`'s lines to try instead (B2), from the screen it failed on. Fields rather than text, so a keyboard
+ * user can select one where there is no clipboard (a plain-HTTP page).
+ */
+function StepSuggestions({ step }: { step: RunStep }) {
+  return (
+    <span className="mt-1.5 flex flex-col gap-1">
+      <span className="text-muted-foreground">Try instead, from the screen it failed on:</span>
+      {step.suggestions!.map((s, i) => <SuggestionLine key={s.yaml} yaml={s.yaml} n={i + 1} stepName={step.name} />)}
+    </span>
+  )
+}
+
+function SuggestionLine({ yaml, n, stepName }: { yaml: string; n: number; stepName: string }) {
+  const field = useRef<HTMLInputElement>(null)
+  return (
+    <span className="flex items-center gap-2">
+      <Input
+        ref={field} readOnly value={yaml} aria-label={`Suggested line ${n} for ${stepName}`}
+        onFocus={(e) => e.currentTarget.select()} className="h-7 font-mono text-xs"
+      />
+      <Button
+        type="button" size="sm" variant="outline" className="h-7" aria-label={`Copy suggested line ${n}`}
+        onClick={() => {
+          // Absent on a plain-HTTP page; unchecked, the click throws before .catch is attached.
+          void (navigator.clipboard ? navigator.clipboard.writeText(yaml) : Promise.reject(new Error('no clipboard')))
+            .then(() => toast.success('Copied'))
+            .catch(() => { toast.error('Could not copy — select the line and copy it by hand'); field.current?.focus() })
+        }}
+      >
+        Copy
+      </Button>
+    </span>
   )
 }
 

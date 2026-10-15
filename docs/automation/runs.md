@@ -28,6 +28,7 @@ The **Runs** button on a build row in App Center lists that build's flow runs on
 A run's page lists its flows in the order they ran.
 
 - A failed flow shows its failure message, each step's result and a screenshot from the moment it failed. A passed flow shows the screen it ended on, as the evidence that it passed: a login flow shows the screen it logged in to. Select a screenshot to open it full size.
+- A `tapOn` step that failed because it found no element, or several, lists lines to try instead under **Try instead**, from the screen at the moment it failed. Each line has a **Copy** button. [Flows](/automation/flows#selectors) explains how they are chosen.
 - A flow the run never reached is marked **Not run**.
 - **Open the CI run** opens the run on the CI side when the CI recorded a link to it. For a run with a build, **Other runs of this build** lists the same build's other runs.
 

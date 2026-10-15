@@ -44,7 +44,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-function parseSelector(v: unknown, ctx: string): Selector {
+export function parseSelector(v: unknown, ctx: string): Selector {
   if (typeof v === 'string') {
     if (v.length === 0) throw new ValidationError(`${ctx}: selector must not be empty`)
     return { text: v }

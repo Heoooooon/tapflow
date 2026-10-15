@@ -254,6 +254,20 @@ describe('cmdFlowRun records the run on the relay (A3)', () => {
 
   const errLines = () => vi.mocked(console.error).mock.calls.map(([l]) => String(l))
 
+  // B2: a tapOn's suggestions go to the console under the failure, and with the step to the record.
+  it('prints a failed tapOn\'s suggestions and records them with the step', async () => {
+    const relay = fakeRelay()
+    const suggestion = { yaml: 'tapOn: "Sign in"', element: { role: 'button', label: 'Sign in' } }
+    mocks.runFlow.mockResolvedValue({
+      ...resultOf('failed', 'product'),
+      steps: [{ index: 0, name: 'tapOn("Sign inn")', status: 'failed', durationMs: 5, message: 'no element', suggestions: [suggestion] }],
+    })
+    await cmdFlowRun([file], { token: 'tflw_pat_x' })
+    expect(errLines()).toContain('  try: tapOn: "Sign in"')
+    const report = relay.calls.find((c) => c.url.endsWith('/flows/0'))!.body as { steps: { suggestions?: unknown[] }[] }
+    expect(report.steps[0]!.suggestions).toEqual([suggestion])
+  })
+
   it('creates the run with the runner id and the planned flows, reports each flow, and finishes it', async () => {
     const relay = fakeRelay()
     mocks.runFlow.mockResolvedValue({ ...resultOf('failed', 'product'), failureScreenshot: Buffer.from('png') })
