@@ -94,7 +94,7 @@ describe('the watch page\'s actions', () => {
     await vi.waitFor(() => expect(screen.getByTestId('watched-device').dataset.marks).toBe(''), { timeout: 2000 })
   })
 
-  it('closes an earlier step when the next begins, and keeps one someone opened', async () => {
+  it('opens every step, and keeps one someone closed closed', async () => {
     renderAt('/automation/sessions/sess-a')
     await deliver({ type: 'watch:started', sessionId: 'sess-a' })
     await action({ kind: 'label', label: 'step 1: tapOn("A")' })
@@ -102,13 +102,13 @@ describe('the watch page\'s actions', () => {
     await action({ kind: 'label', label: 'step 2: tapOn("B")' })
     await action({ kind: 'tap', x: 0.2, y: 0.2 })
     const first = screen.getByRole('button', { name: 'step 1: tapOn("A")' })
-    expect(first.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByText('Tap at 10%, 10%')).toBeNull()
-    await act(async () => { first.click() })
+    expect(first.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByText('Tap at 10%, 10%')).toBeTruthy()
+    await act(async () => { first.click() })
+    expect(screen.queryByText('Tap at 10%, 10%')).toBeNull()
     await action({ kind: 'label', label: 'step 3: tapOn("C")' })
-    expect(screen.getByRole('button', { name: 'step 1: tapOn("A")' }).getAttribute('aria-expanded')).toBe('true')
-    expect(screen.getByRole('button', { name: 'step 2: tapOn("B")' }).getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getByRole('button', { name: 'step 1: tapOn("A")' }).getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getByRole('button', { name: 'step 2: tapOn("B")' }).getAttribute('aria-expanded')).toBe('true')
   })
 
   it('keeps the last picture and the activity once the watch ends', async () => {

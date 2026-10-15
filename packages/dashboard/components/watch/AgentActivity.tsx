@@ -16,8 +16,8 @@ interface Group { id: number; at: number; label: string | null; actions: { id: n
 /**
  * What the holder has done since this page started watching (A2), oldest first: each step a row that opens onto the
  * actions taken under it — the look of shadcn's Trace ("Thought for 5s"), rebuilt here as a plain disclosure because
- * Trace is Base UI and this package is Radix on Tailwind 3. The latest step is open, the rest closed until someone
- * opens them; what someone opened or closed stays so. The time is a tooltip.
+ * Trace is Base UI and this package is Radix on Tailwind 3. Every step starts open; one someone closed stays closed.
+ * The time is a tooltip.
  *
  * `live` is false once the watch is over: the log stays to be read, and no step is shown as still running.
  */
@@ -55,8 +55,8 @@ export function AgentActivity({ actions, driver, live }: { actions: WatchedActio
                   <Step
                     group={g}
                     running={live && g.id === latest}
-                    open={opened[g.id] ?? g.id === latest}
-                    onToggle={() => setOpened((prev) => ({ ...prev, [g.id]: !(prev[g.id] ?? g.id === latest) }))}
+                    open={opened[g.id] ?? true}
+                    onToggle={() => setOpened((prev) => ({ ...prev, [g.id]: !(prev[g.id] ?? true) }))}
                   />
                 </li>
               ))}
