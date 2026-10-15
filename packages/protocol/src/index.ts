@@ -1610,7 +1610,8 @@ export interface SessionLeave {
   sessionId: string
 }
 
-// `external` is added by the relay on the way through — the browser never sets it.
+// `external` and `automation` are added by the relay on the way through — the browser never sets them.
+// Undeclared on purpose: the parser strips both from what a browser sends, and the relay sets them after it.
 export interface DeviceBoot {
   type: 'device:boot'
   sessionId: string

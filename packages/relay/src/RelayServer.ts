@@ -1805,6 +1805,10 @@ export class RelayServer {
         // presence check the old line carried is gone because the schema requires the payload — and
         // `external` is deliberately not declared on `DeviceBoot`, since the browser never sends it.
         (msg.payload as Record<string, unknown>)['external'] = this.wsExternal.get(ws) ?? false
+        // Whether an automation client (flow runner, MCP) is booting, so the iOS agent can start its UI-tree runner
+        // now instead of inside the first selector step's timeout. Only the holder can boot (`dispatchTarget`), so the
+        // holder's kind is the booter's. A dashboard boot is never warmed: the runner costs about 520 MB per device.
+        ;(msg.payload as Record<string, unknown>)['automation'] = isAiClientKind(boot.session.holderKind)
         // Tracked by the socket it actually goes to (#885): a rebind invalidates only the boots
         // tied to the replaced socket, so a boot dispatched after the rebind stays answerable.
         this.rememberBoot(msg.sessionId, msg.requestId, boot.session.agentSocket)

@@ -104,6 +104,7 @@ import { SimctlWrapper } from '../SimctlWrapper'
 import { LeanStore } from '../LeanStore'
 import { LEAN_LABELS } from '../leanLabels'
 import { TouchHelper } from '../TouchHelper'
+import { XCUITreeReader } from '../XCUITreeReader'
 import { barrier, waitForOpen, waitForType, waitForTypeOrNull } from '@tapflowio/test-utils'
 import type { SessionJoined } from '@tapflowio/protocol'
 const MockTouchHelper = vi.mocked(TouchHelper)
@@ -658,6 +659,31 @@ describe('IOSAgent', () => {
         expect(th.touchStart).toHaveBeenCalledTimes(1)
         expect(th.touchEnd).toHaveBeenCalledTimes(1)
       }, { timeout: 500 })
+
+      agent.disconnect()
+      browser.close()
+    })
+  })
+
+  // The relay tags a boot `automation` when a flow runner or MCP client holds the session; the agent then starts
+  // the UI-tree runner so the first selector step does not spend its cold start. A dashboard boot never does: the
+  // runner costs about 520 MB per device, and manual testing never reads the tree.
+  describe('UI-tree runner warm-up on boot', () => {
+    afterEach(() => { vi.restoreAllMocks() })
+
+    it.each([['flow-runner', 1], ['dashboard', 0]] as const)('warms on a boot by a %s holder: %i call(s)', async (clientKind, calls) => {
+      const warm = vi.spyOn(XCUITreeReader.prototype, 'warm').mockImplementation(() => {})
+      const browser = new WebSocket(`ws://localhost:${port}`)
+      await waitForOpen(browser)
+      const agent = new IOSAgent({ intervalMs: 50 }, mockSimctl(true))
+      await agent.connect(`ws://localhost:${port}`)
+      browser.send(JSON.stringify({ type: 'session:start', sessionId: agent.sessionId, clientKind }))
+      await waitForType(browser, 'session:joined')
+      browser.send(JSON.stringify({ type: 'device:boot', requestId: 'rq-warm', sessionId: agent.sessionId, payload: { deviceId: 'dev-1' } }))
+      await waitForType(browser, 'device:ready')
+
+      expect(warm).toHaveBeenCalledTimes(calls)
+      if (calls) expect(warm).toHaveBeenCalledWith('dev-1')
 
       agent.disconnect()
       browser.close()
