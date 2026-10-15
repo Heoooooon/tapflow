@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The `tapflow` npm package includes its license file.** Its `package.json` listed `LICENSE`, but the file was missing from the package directory, so the published package shipped without it. `NOTICE` now also credits the Android Emulator's `emulator_controller.proto` (Apache-2.0), which the Android agent includes.
+
 - **Xcode installed under another name is found.** `tapflow doctor` and `tapflow setup ios` reported Xcode as missing unless it was at `/Applications/Xcode.app`, so an Xcode installed by `xcodes` (`/Applications/Xcode-27.0.0.app`) failed both. They now use the Xcode `xcode-select` points to, then `/Applications/Xcode.app`, then any other `/Applications/Xcode*.app`, and `setup ios` selects that bundle rather than `/Applications/Xcode.app`.
 
 - **Deleting an app works when one of its builds has a session recording, and removes the files.** It used to fail with an error in that case, and otherwise left every build file of the app on disk. Deleting an app now removes its builds' recordings and files the same way the expiry purge does.
