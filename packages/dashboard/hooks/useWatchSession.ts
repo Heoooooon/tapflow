@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { WatchEndReason, WatchRefusal } from '@tapflowio/protocol'
 import { useRelay } from '@/hooks/useRelay'
 import { CODEC_AUDIO, HEADER_SIZE, parseEnvelopeHeader, type BinaryFrameHandler } from '@/lib/envelope'
-import { MARK_MS, MAX_ACTIONS, isMark, type WatchedAction } from '@/lib/watchActions'
+import { MARK_MS, MAX_ACTIONS, NO_MARKS, isMark, trailOf, type WatchMarks, type WatchedAction } from '@/lib/watchActions'
 import type { BrowserInbound, ChromePayload, DeviceSummary, PosturesPayload } from '@/lib/types'
 
 /** Where a watch stands, as the page says it. */
@@ -36,7 +36,7 @@ export function useWatchSession(sessionId: string) {
   const binaryFrameHandlerRef = useRef<BinaryFrameHandler | undefined>(undefined)
   /** What the holder did since this page started watching (A2), newest first; and the taps and swipes still drawn. */
   const [actions, setActions] = useState<WatchedAction[]>([])
-  const [marks, setMarks] = useState<WatchedAction[]>([])
+  const [marks, setMarks] = useState<WatchMarks>(NO_MARKS)
   const nextId = useRef(0)
   const markTimers = useRef(new Set<ReturnType<typeof setTimeout>>())
   useEffect(() => {
@@ -71,10 +71,14 @@ export function useWatchSession(sessionId: string) {
       const entry: WatchedAction = { id: nextId.current++, at: msg.at, action: msg.action }
       setActions((prev) => [entry, ...prev].slice(0, MAX_ACTIONS))
       if (isMark(msg.action)) {
-        setMarks((prev) => [...prev, entry])
+        const a = msg.action
+        setMarks((prev) => ({
+          cursor: a.kind === 'tap' ? { x: a.x, y: a.y } : { x: a.to[0], y: a.to[1] },
+          trails: [...prev.trails, trailOf(entry.id, a, prev.cursor)],
+        }))
         const timer = setTimeout(() => {
           markTimers.current.delete(timer)
-          setMarks((prev) => prev.filter((m) => m.id !== entry.id))
+          setMarks((prev) => ({ ...prev, trails: prev.trails.filter((t) => t.id !== entry.id) }))
         }, MARK_MS)
         markTimers.current.add(timer)
       }

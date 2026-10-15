@@ -28,8 +28,12 @@ vi.mock('@/hooks/useRelay', async () => {
   }
 })
 vi.mock('@/components/device/WatchedDevice', () => ({
-  WatchedDevice: ({ platform, marks }: { platform: string; marks?: { action: { kind: string } }[] }) => (
-    <div data-testid="watched-device" data-platform={platform} data-marks={marks ? marks.map((m) => m.action.kind).join(',') : 'none'} />
+  WatchedDevice: ({ platform, marks }: { platform: string; marks?: { cursor: { x: number; y: number } | null; trails: { kind: string }[] } }) => (
+    <div
+      data-testid="watched-device" data-platform={platform}
+      data-marks={marks ? marks.trails.map((t) => t.kind).join(',') : 'none'}
+      data-cursor={marks?.cursor ? `${marks.cursor.x},${marks.cursor.y}` : 'none'}
+    />
   ),
 }))
 
@@ -91,7 +95,9 @@ describe('the watch page\'s actions', () => {
     expect(inside[0]!.firstElementChild!.getAttribute('title')).toMatch(/\d/)
     expect(screen.getByRole('heading', { name: 'Agent activity' })).toBeTruthy()
     expect(screen.getByTestId('watched-device').dataset.marks).toBe('tap')
+    // The trail fades; the cursor stays where the agent last tapped.
     await vi.waitFor(() => expect(screen.getByTestId('watched-device').dataset.marks).toBe(''), { timeout: 2000 })
+    expect(screen.getByTestId('watched-device').dataset.cursor).toBe('0.5,0.8')
   })
 
   it('opens every step, and keeps one someone closed closed', async () => {

@@ -9,8 +9,28 @@ export interface WatchedAction {
 
 /** The list keeps this many; older ones fall off. Nothing is stored anywhere — a reload starts empty. */
 export const MAX_ACTIONS = 100
-/** How long a tap or swipe stays drawn on the device. */
+/** How long the trail of a move stays drawn on the device; the cursor itself stays. */
 export const MARK_MS = 900
+
+/**
+ * The agent's pointer on the device, as the watch page draws it — the way computer-use views do: a cursor that stays
+ * at the last tap and glides to the next, leaving a short-lived trail of where it came from.
+ */
+export interface WatchMarks {
+  cursor: { x: number; y: number } | null
+  trails: Trail[]
+}
+/** A move to show for a moment: a tap's path from the previous cursor, or a swipe's from its start. */
+export interface Trail { id: number; kind: 'tap' | 'swipe'; from: [number, number] | null; to: [number, number] }
+
+export const NO_MARKS: WatchMarks = { cursor: null, trails: [] }
+
+/** The trail an action leaves, given where the cursor was. */
+export function trailOf(id: number, a: Extract<WatchActionKind, { kind: 'tap' | 'swipe' }>, cursor: WatchMarks['cursor']): Trail {
+  return a.kind === 'tap'
+    ? { id, kind: 'tap', from: cursor ? [cursor.x, cursor.y] : null, to: [a.x, a.y] }
+    : { id, kind: 'swipe', from: a.from, to: a.to }
+}
 
 /** A line for the Actions list. Positions as percentages of the screen, which is what they are on the wire. */
 export function actionText(a: WatchActionKind): string {

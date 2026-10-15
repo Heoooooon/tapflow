@@ -14,7 +14,7 @@ import type { BinaryFrameHandler } from '@/lib/envelope';
 import type { AndroidChrome, ChromeData, ChromePayload } from '@/lib/types';
 import { iosScreenLayout } from '@/lib/iosScreenLayout';
 import { TapMarks } from '@/components/watch/TapMarks';
-import { placeOnIosFrame, type WatchedAction } from '@/lib/watchActions';
+import { placeOnIosFrame, type WatchMarks } from '@/lib/watchActions';
 
 interface WatchedDeviceProps {
   chrome: ChromePayload | null;
@@ -29,8 +29,8 @@ interface WatchedDeviceProps {
   /** Remounts the screen (a new decoder) when it changes, keeping what this component learned — the stream's size
    *  for a frameless device — so a replay's seek does not redraw the frame at a guessed size first. */
   screenKey?: string | number;
-  /** The holder's taps and swipes to draw for a moment (A2). The live watch page passes them; a replay does not. */
-  marks?: WatchedAction[];
+  /** The holder's pointer to draw on the device (A2). The live watch page passes it; a replay does not. */
+  marks?: WatchMarks;
 }
 
 /**
@@ -69,7 +69,7 @@ function WatchedIOS({ chrome, formFactor, binaryFrameHandlerRef, onStreamSize, r
   binaryFrameHandlerRef: MutableRefObject<BinaryFrameHandler | undefined>;
   onStreamSize: (size: { width: number; height: number }) => void;
   replay: boolean;
-  marks?: WatchedAction[];
+  marks?: WatchMarks;
 }) {
   const { fps, frameCount } = useFps();
   const screen = useIOSScreen({ chrome, binaryFrameHandlerRef, fps, frameCount, onCanvasResize: onStreamSize });
@@ -91,7 +91,7 @@ function WatchedAndroid({ chrome, deviceReady, binaryFrameHandlerRef, marks }: {
   chrome: AndroidChrome;
   deviceReady: boolean;
   binaryFrameHandlerRef: MutableRefObject<BinaryFrameHandler | undefined>;
-  marks?: WatchedAction[];
+  marks?: WatchMarks;
 }) {
   const { frameCount } = useFps();
   const screen = useAndroidScreen({

@@ -49,7 +49,7 @@ function WatchView({ sessionId }: { sessionId: string }) {
   return (
     // Laid out as the QA session is: the device on the left, a rule, the panel on the right — stacked on a narrow
     // screen, where the panel follows the device.
-    <div className="flex h-full min-h-0 flex-col gap-6 p-6 lg:flex-row">
+    <div className="flex min-h-0 flex-col gap-6 p-6 lg:h-full lg:flex-row">
       <div className="flex min-w-0 flex-col gap-5">
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold tracking-tight">{device?.name ?? 'AI session'}</h1>

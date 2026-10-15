@@ -1,44 +1,53 @@
-import type { WatchedAction } from '@/lib/watchActions'
+import type { WatchMarks } from '@/lib/watchActions'
+
+const BLUE = 'rgb(59 130 246)'
 
 /**
- * Where the holder just tapped or swiped (A2), drawn over the device for a moment. `place` turns a point on the
- * device's screen (0–1, as on the wire) into a position in the overlay's own box — that box is the whole device
- * frame on iOS and the screen on Android, so the conversion is the platform's. Drawn under the stalled-stream notice
- * (z 8), so a mark does not suggest live input on a picture the page says has stopped.
+ * The agent's pointer on the device (A2), the way computer-use views show one: a blue cursor that stays at the last
+ * tap and glides to the next, a trail of where it came from that fades, and a ripple where it lands. A swipe draws its
+ * stroke and leaves the cursor at its end. `place` turns a point on the device's screen (0–1, as on the wire) into a
+ * position in the overlay's own box — the whole device frame on iOS, the screen on Android.
+ *
+ * Under the stalled-stream notice (z 8), so nothing here suggests live input on a picture the page says has stopped.
+ * With reduced motion the cursor moves without gliding and nothing ripples.
  */
 export function TapMarks({ marks, place }: {
-  marks: WatchedAction[]
+  marks: WatchMarks
   place: (x: number, y: number) => { left: number; top: number }
 }) {
+  const cursor = marks.cursor && place(marks.cursor.x, marks.cursor.y)
+  const pct = (n: number) => `${n * 100}%`
   return (
     <div aria-hidden="true" data-testid="tap-marks" className="pointer-events-none absolute inset-0" style={{ zIndex: 5 }}>
-      {marks.map(({ id, action }) => {
-        if (action.kind === 'tap') {
-          const p = place(action.x, action.y)
-          return (
+      {marks.trails.map((t) => {
+        const b = place(...t.to)
+        const a = t.from && place(...t.from)
+        return (
+          <span key={t.id}>
+            {a && (
+              <svg data-testid="trail" className="absolute inset-0 size-full overflow-visible motion-safe:animate-[swipe-mark_0.8s_ease-out_forwards]">
+                <line
+                  x1={pct(a.left)} y1={pct(a.top)} x2={pct(b.left)} y2={pct(b.top)}
+                  stroke={BLUE} strokeOpacity={t.kind === 'swipe' ? 0.7 : 0.45} strokeWidth={t.kind === 'swipe' ? 6 : 3}
+                  strokeLinecap="round" {...(t.kind === 'tap' ? { strokeDasharray: '1 7' } : {})}
+                />
+              </svg>
+            )}
             <span
-              key={id}
-              data-testid="tap-mark"
-              className="absolute size-8 rounded-full border-2 border-white/90 bg-white/30 shadow-[0_0_0_1px_rgba(0,0,0,0.35)] motion-safe:animate-[tap-mark_0.9s_ease-out_forwards]"
-              style={{ left: `${p.left * 100}%`, top: `${p.top * 100}%`, transform: 'translate(-50%, -50%)' }}
+              data-testid="ripple"
+              className="absolute size-10 rounded-full border-2 border-blue-500 opacity-0 motion-safe:animate-[tap-mark_0.7s_ease-out_0.2s_forwards]"
+              style={{ left: pct(b.left), top: pct(b.top), transform: 'translate(-50%, -50%)' }}
             />
-          )
-        }
-        if (action.kind === 'swipe') {
-          const a = place(...action.from)
-          const b = place(...action.to)
-          return (
-            <svg key={id} data-testid="swipe-mark" className="absolute inset-0 size-full overflow-visible motion-safe:animate-[swipe-mark_0.9s_ease-out_forwards]">
-              <line
-                x1={`${a.left * 100}%`} y1={`${a.top * 100}%`} x2={`${b.left * 100}%`} y2={`${b.top * 100}%`}
-                stroke="white" strokeOpacity={0.85} strokeWidth={4} strokeLinecap="round"
-              />
-              <circle cx={`${b.left * 100}%`} cy={`${b.top * 100}%`} r={7} fill="white" fillOpacity={0.85} />
-            </svg>
-          )
-        }
-        return null
+          </span>
+        )
       })}
+      {cursor && (
+        <span
+          data-testid="tap-cursor"
+          className="absolute size-7 rounded-full border-2 border-blue-500 bg-blue-500/35 shadow-[0_0_0_2px_rgba(255,255,255,0.85),0_2px_8px_rgba(0,0,0,0.3)] motion-safe:transition-[left,top] motion-safe:duration-300 motion-safe:ease-out"
+          style={{ left: pct(cursor.left), top: pct(cursor.top), transform: 'translate(-50%, -50%)' }}
+        />
+      )}
     </div>
   )
 }

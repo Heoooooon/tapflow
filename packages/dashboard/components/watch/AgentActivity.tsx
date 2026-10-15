@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import {
   ChevronRight, CircleCheck, CornerDownLeft, Download, Eraser, House, Keyboard, Link2, LoaderCircle, MousePointerClick,
   MoveHorizontal, MoveVertical, Play, Scaling,
@@ -27,8 +27,11 @@ export function AgentActivity({ actions, driver, live }: { actions: WatchedActio
   const [opened, setOpened] = useState<Record<number, boolean>>({})
   const box = useRef<HTMLDivElement>(null)
   // Follows the newest line while the reader is at the bottom; leaves them where they are once they scroll up.
+  // **Before paint, with scroll anchoring off**: Chrome's anchoring adjusts the box as lines are added and fires a
+  // scroll event from that layout, which read as the reader having left the bottom, so following stopped for good
+  // the first time someone scrolled. Now the only scroll events are the reader's and this one.
   const pinned = useRef(true)
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = box.current
     if (el && pinned.current) el.scrollTop = el.scrollHeight
   }, [actions])
@@ -42,7 +45,8 @@ export function AgentActivity({ actions, driver, live }: { actions: WatchedActio
           const el = e.currentTarget
           pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24
         }}
-        className="min-h-48 flex-1 overflow-y-auto rounded-xl border bg-background px-5 py-4"
+        style={{ overflowAnchor: 'none' }}
+        className="h-96 overflow-y-auto rounded-xl border bg-background px-5 py-4 lg:h-auto lg:min-h-48 lg:flex-1"
       >
         {groups.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing yet. What the {driver} does appears here as it happens.</p>
