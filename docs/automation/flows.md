@@ -87,7 +87,7 @@ A bare-string selector resolves in the order **exact identifier → exact label 
 
 If a `tapOn` selector matches more than one element, it fails immediately and lists the candidates. It never picks the first one implicitly, so an ambiguous selector fails visibly instead of quietly tapping the wrong place. `assertVisible` checks presence only, so it passes when at least one element matches.
 
-When a `tapOn` fails because its selector matched nothing or more than one element, the runner prints up to three lines to try instead, taken from the screen at the moment it failed: `try: tapOn: "Sign in"`. Each one is a selector checked to tap exactly that one element on that screen, and it is kept in the [run record](#run-records) too. An input field is suggested by `id` only, so what was typed into it is not shown. A failed `assertVisible` gets no suggestions: the expected text being missing can mean the app changed, and swapping in similar text would hide the regression.
+When a `tapOn` fails because its selector matched nothing or more than one element, the runner prints up to three lines to try instead, taken from the screen at the moment it failed: `try: tapOn: "Sign in"`. Each one is a selector checked to tap exactly that one element on that screen, and it is kept in the [run record](#run-records) too. An input field is suggested by its `id`, never its label, so what was typed into it is not shown. A failed `assertVisible` gets no suggestions: the expected text being missing can mean the app changed, and swapping in similar text would hide the regression.
 
 To resolve an ambiguous match, add a disambiguator to the object form:
 

@@ -98,7 +98,7 @@ describe('suggestSelectors', () => {
     expect(suggestSelectors([below], { text: 'Sign inn' })).toEqual([])
   })
 
-  it('suggests an input field by id only, never by what is typed in it', () => {
+  it('suggests an input field by its id, never by what is typed in it', () => {
     const typed = el('jane@example.test', { role: 'input', identifier: 'email' })
     const unnamed = el('jane@example.test', { role: 'input' })
     const s = suggestSelectors([typed, unnamed], { text: 'jane@example.tes' })
