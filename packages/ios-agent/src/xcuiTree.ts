@@ -52,6 +52,8 @@ function toRole(type: string): UIElementRole {
 
 const ACTIONABLE = new Set<UIElementRole>(['button', 'input', 'checkbox', 'switch', 'slider', 'tab', 'cell'])
 const round4 = (n: number): number => Math.round(n * 10000) / 10000
+/** Down, for a far edge: `x + width` must not reach past 1 by a rounding step. */
+const floor4 = (n: number): number => Math.max(0, Math.floor(n * 10000 + 1e-9) / 10000)
 
 interface RawNode {
   type: string
@@ -117,15 +119,19 @@ export function parseTreeText(text: string): UIElement[] {
     // Skip pure structural containers with no label and no actionable role.
     if (!ACTIONABLE.has(role) && label === '' && !node.identifier) continue
 
+    // Clipped to the screen, as the Android agent does: a node partly scrolled or animated out would otherwise
+    // carry a frame outside 0–1, and every consumer refuses the whole tree for one such element. A node wholly
+    // off the screen is dropped — nothing can tap it.
+    const x1 = Math.max(0, (node.frame.x - basis.x) / basis.width)
+    const y1 = Math.max(0, (node.frame.y - basis.y) / basis.height)
+    const x2 = Math.min(1, (node.frame.x + node.frame.width - basis.x) / basis.width)
+    const y2 = Math.min(1, (node.frame.y + node.frame.height - basis.y) / basis.height)
+    if (x2 <= x1 || y2 <= y1) continue
     const element: UIElement = {
       role,
       label,
-      frame: {
-        x: round4((node.frame.x - basis.x) / basis.width),
-        y: round4((node.frame.y - basis.y) / basis.height),
-        width: round4(node.frame.width / basis.width),
-        height: round4(node.frame.height / basis.height),
-      },
+      // The far edge is rounded down, so rounding can never carry x + width past 1 — the consumers compare exactly.
+      frame: { x: round4(x1), y: round4(y1), width: floor4(x2 - round4(x1)), height: floor4(y2 - round4(y1)) },
       enabled: true, // debugDescription does not expose enabled; default true (Open Q9)
     }
     if (node.identifier) element.identifier = node.identifier

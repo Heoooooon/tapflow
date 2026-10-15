@@ -23,6 +23,44 @@ describe('parseTreeText', () => {
     }
   })
 
+  // The 0–1 contract every consumer validates against (flow-runner and the MCP server refuse the whole tree
+  // otherwise): an element partly scrolled out is clipped to the screen, one wholly off it is dropped — as Android.
+  it('clips an element that runs off the screen and drops one wholly off it', () => {
+    const text = [
+      'Element subtree:',
+      ' →Application, 0x1, pid: 1, label: \'Demo\'',
+      '    Window (Main), 0x2, {{0.0, 0.0}, {400.0, 800.0}}',
+      '      Image, 0x3, {{-40.0, 100.0}, {80.0, 40.0}}, label: \'Carousel\'',
+      '      Button, 0x4, {{100.0, 760.0}, {200.0, 80.0}}, label: \'Donuts\'',
+      '      Button, 0x5, {{100.0, 900.0}, {200.0, 80.0}}, label: \'Social Feed\'',
+    ].join('\n')
+    const out = parseTreeText(text)
+    expect(out.map((e) => e.label)).toEqual(['Carousel', 'Donuts'])
+    expect(out[0]!.frame).toEqual({ x: 0, y: 0.125, width: 0.1, height: 0.05 })
+    expect(out[1]!.frame).toEqual({ x: 0.25, y: 0.95, width: 0.5, height: 0.05 })
+    for (const e of out) {
+      expect(e.frame.x + e.frame.width).toBeLessThanOrEqual(1)
+      expect(e.frame.y + e.frame.height).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('never rounds an edge past the screen', () => {
+    let seed = 1
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 }
+    const rows = Array.from({ length: 500 }, (_, i) => {
+      const x = (rnd() - 0.2) * 400, y = (rnd() - 0.2) * 800
+      return `      Button, 0x${i + 10}, {{${x.toFixed(3)}, ${y.toFixed(3)}}, {${(rnd() * 300 + 1).toFixed(3)}, ${(rnd() * 300 + 1).toFixed(3)}}}, label: 'b${i}'`
+    })
+    const out = parseTreeText(['Element subtree:', '    Window (Main), 0x2, {{0.0, 0.0}, {393.0, 852.0}}', ...rows].join('\n'))
+    expect(out.length).toBeGreaterThan(100)
+    for (const e of out) {
+      expect(e.frame.x).toBeGreaterThanOrEqual(0)
+      expect(e.frame.y).toBeGreaterThanOrEqual(0)
+      expect(e.frame.x + e.frame.width).toBeLessThanOrEqual(1)
+      expect(e.frame.y + e.frame.height).toBeLessThanOrEqual(1)
+    }
+  })
+
   it('extracts identifier-bearing rows (Echo Box) with normalized frame', () => {
     const echo = els.find((e) => e.identifier === 'Echo Box')
     expect(echo).toBeDefined()
