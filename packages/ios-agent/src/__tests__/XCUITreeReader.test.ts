@@ -204,6 +204,21 @@ describe('XCUITreeReader', () => {
       reader.stop()
     })
 
+    it('is not replaced by a warm-up once another device started the runner during the probe', async () => {
+      const native = makeNative()
+      const reader = new XCUITreeReader(native)
+      await reader.read('udid-A', 'com.app')
+      let failProbe!: () => void
+      fetchMock.mockImplementationOnce(() => new Promise((_, reject) => { failProbe = () => reject(refused()) }))
+      reader.warm('udid-A')
+      await reader.read('udid-B', 'com.app') // starts B's runner while A's probe is still out
+      failProbe()
+      await new Promise((r) => setTimeout(r, 10))
+      // A then B, and nothing after: a warm-up that went on would have stopped B's runner to start A's.
+      expect(native.spawn).toHaveBeenCalledTimes(2)
+      reader.stop()
+    })
+
     it('is kept by a warm-up when it still answers', async () => {
       const native = makeNative()
       const reader = new XCUITreeReader(native)

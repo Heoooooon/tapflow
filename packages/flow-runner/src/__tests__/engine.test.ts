@@ -139,20 +139,19 @@ describe('runFlow', () => {
       expect(order).toEqual(['tree', 'tree', 'tree', 'swipe'])
     })
 
-    it('fails as the app when it is read and never shows anything', async () => {
+    // A game, canvas or WebView-only screen has nothing in the tree and is up all the same.
+    it('goes on after the timeout when the tree stays empty, without failing', async () => {
       const driver = fakeDriver([[]])
       const result = await runFlow(flowOf('steps:\n  - launchApp\n  - scroll: down\n'), driver, OPTS)
-      expect(result.status).toBe('failed')
-      expect(result.failureKind).toBe('product')
-      expect(result.failureMessage).toMatch(/showed no screen/)
-      expect(driver.swipe).not.toHaveBeenCalled()
+      expect(result.status).toBe('passed')
+      expect(driver.calls).toEqual([['launchApp'], ['swipe', [0.5, 0.7], [0.5, 0.3], 300]])
     })
 
-    it('fails as the environment when the tree is never read', async () => {
+    it('leaves a failing tree query to the next step to report', async () => {
       const driver = fakeDriver([])
-      driver.queryUITree = vi.fn(async () => { throw new TransientQueryError('agent busy') })
+      driver.queryUITree = vi.fn(async () => { throw new Error('Session not found') })
       const result = await runFlow(flowOf('steps:\n  - launchApp\n'), driver, OPTS)
-      expect(result.failureKind).toBe('environment')
+      expect(result.status).toBe('passed')
     })
   })
 

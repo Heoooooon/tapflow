@@ -311,27 +311,28 @@ async function waitNotVisible(driver: FlowDriver, sel: Selector, timeoutMs: numb
 }
 
 /**
- * `launchApp` ends when the app shows a screen, not when its process starts. A coordinate step sent before that —
+ * After `launchApp`, wait for the app to show a screen before the next step. A coordinate step sent before that —
  * `scroll`, `swipe`, `inputText`, `pressKey` — is acknowledged by the agent and dropped by the app, so it passed
  * while doing nothing and the flow failed one step later under the wrong name (seen on iOS: `scroll` right after
  * `launchApp`, 5 of 5). Selector steps never had this problem: they poll. The first non-empty tree is the signal.
+ *
+ * **Best effort: it never fails the step.** A game, a canvas or a WebView-only screen, or Flutter without semantics,
+ * shows a screen that has no element in the tree at all, and both agents' trees leave unlabelled containers out — so
+ * an empty tree cannot tell "not up yet" from "up, with nothing to name". Such an app waits out the timeout and goes
+ * on, as it did before. A query that fails is the next step's to report, as it was before.
  */
 async function waitForScreen(driver: FlowDriver, timeoutMs: number, pollIntervalMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs
-  let lastError: TransientQueryError | undefined
-  let sawTree = false
-  for (;;) {
-    const q = await queryOrRetry(driver, deadline)
-    if ('tree' in q) {
-      sawTree = true
-      lastError = undefined
-      if (q.tree.length > 0) return
-    } else {
-      lastError = latestError(lastError, q.transient)
+  try {
+    for (;;) {
+      const q = await queryOrRetry(driver, deadline)
+      if ('tree' in q && q.tree.length > 0) return
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) return
+      await delay(Math.min(pollIntervalMs, remaining))
     }
-    const base = `the app showed no screen within ${timeoutMs / 1000}s of launching`
-    if (Date.now() >= deadline) throw deadlineError(base, lastError, sawTree)
-    await waitForNextPoll(deadline, pollIntervalMs, base, lastError, sawTree)
+  } catch {
+    // Not this step's to report: see above.
   }
 }
 

@@ -160,11 +160,24 @@ export class XCUITreeReader {
     if (this.starting) return
     const held = this.runnerAlive(this.runner) ? this.runner : undefined
     if (held && held.udid !== udid) return
-    const generation = this.generation
+    let generation = this.generation
     // A runner already serving this device may have died with a simulator shut down outside tapflow, while its
-    // xcodebuild lingers for up to a minute and still looks alive: ask it before keeping it.
-    const check = held ? answers(held.port).then((ok) => { if (!ok && this.runner === held) this.stop() }) : Promise.resolve()
-    check.then(() => this.ensureRunner(udid)).catch((e: Error) => {
+    // xcodebuild lingers for up to a minute and still looks alive: ask it before keeping it. Stopping it here is
+    // this warm-up's own doing, so it moves the generation this warm-up compares against.
+    const check = held
+      ? answers(held.port).then((ok) => {
+        if (!ok && this.runner === held) {
+          this.stop()
+          generation = this.generation
+        }
+      })
+      : Promise.resolve()
+    check.then(() => {
+      // The probe takes up to a second, and another device's read may have started the runner meanwhile (its launch
+      // stops what was there, bumping the generation). Going on would stop that runner while it serves.
+      if (this.generation !== generation) return
+      return this.ensureRunner(udid)
+    }).catch((e: Error) => {
       // Stopped on purpose (the device was shut down mid-start) is not a fault worth sending anyone to Xcode for.
       if (this.generation !== generation) logger.debug(`tree runner warm-up for ${udid} cancelled: ${e.message}`)
       else logger.warn(`tree runner warm-up for ${udid} failed; the first query will try again: ${e.message}`)

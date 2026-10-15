@@ -50,7 +50,7 @@ The vocabulary is deliberately small. These ten cover most scenarios.
 | Step | Form | Behavior |
 |------|------|----------|
 | `clearState` | keyword or `clearState: <bundleId>` | Resets the app data. The keyword form uses the top-level `appId`. |
-| `launchApp` | keyword | Launches the build under test and waits until the app shows a screen. |
+| `launchApp` | keyword | Launches the build under test and waits, up to the default per-selector wait, until the app shows a screen. An app whose screen has no UI tree elements, such as a game, moves on to the next step when that time is up. |
 | `tapOn` | selector | Taps the center of the matched element. |
 | `inputText` | string | Types text into the focused input field. |
 | `pressKey` | key name | Presses a keyboard key (`Enter`, `Backspace`, `Escape`, …). |
