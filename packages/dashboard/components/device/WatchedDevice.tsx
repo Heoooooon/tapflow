@@ -14,7 +14,7 @@ import type { BinaryFrameHandler } from '@/lib/envelope';
 import type { AndroidChrome, ChromeData, ChromePayload } from '@/lib/types';
 import { iosScreenLayout } from '@/lib/iosScreenLayout';
 import { TapMarks } from '@/components/watch/TapMarks';
-import type { WatchedAction } from '@/lib/watchActions';
+import { placeOnIosFrame, type WatchedAction } from '@/lib/watchActions';
 
 interface WatchedDeviceProps {
   chrome: ChromePayload | null;
@@ -73,10 +73,8 @@ function WatchedIOS({ chrome, formFactor, binaryFrameHandlerRef, onStreamSize, r
 }) {
   const { fps, frameCount } = useFps();
   const screen = useIOSScreen({ chrome, binaryFrameHandlerRef, fps, frameCount, onCanvasResize: onStreamSize });
-  // The overlay spans the whole frame on iOS, so a point on the screen goes through where the screen sits in it —
-  // the same conversion as the QA viewer's pinch hints.
-  const { screenPctLeft, screenPctTop, screenPctW, screenPctH } = iosScreenLayout(chrome);
-  const place = (x: number, y: number) => ({ left: (screenPctLeft + x * screenPctW) / 100, top: (screenPctTop + y * screenPctH) / 100 });
+  // The overlay spans the whole frame on iOS, so a point goes through where the screen sits in it.
+  const place = placeOnIosFrame(iosScreenLayout(chrome));
   return (
     <>
       {/* `joined` is what lets the screen say a live stream stalled; a replay is never waiting on one. */}

@@ -41,3 +41,14 @@ function direction(from: [number, number], to: [number, number]): string {
 export function isMark(a: WatchActionKind): a is Extract<WatchActionKind, { kind: 'tap' | 'swipe' }> {
   return a.kind === 'tap' || a.kind === 'swipe'
 }
+
+/**
+ * A point on an iOS screen (0–1) as a position in the whole device frame, which is the box the iOS screen's overlay
+ * spans — the same conversion as the QA viewer's pinch hints. `layout` is `iosScreenLayout(chrome)`.
+ */
+export function placeOnIosFrame(layout: { screenPctLeft: number; screenPctTop: number; screenPctW: number; screenPctH: number }) {
+  return (x: number, y: number) => ({
+    left: (layout.screenPctLeft + x * layout.screenPctW) / 100,
+    top: (layout.screenPctTop + y * layout.screenPctH) / 100,
+  })
+}
