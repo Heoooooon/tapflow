@@ -1,6 +1,6 @@
 export { parseFlow } from './schema.js'
 export type { Flow, Step, Selector, ScrollDirection } from './schema.js'
-export { runFlow, matchSelector } from './engine.js'
+export { runFlow, matchSelector, activityLabel } from './engine.js'
 export type { FlowDriver, FlowResult, StepResult, EngineOptions, SelectorSuggestion } from './engine.js'
 export { toJUnitXml } from './junit.js'
 export { EnvironmentStepError, TransientQueryError, isEnvironmentStepFailure, markEnvironmentFailure } from './errors.js'

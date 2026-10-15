@@ -31,8 +31,18 @@ function fakeClient(calls: string[]): TapflowClient {
     openUrl: vi.fn(async () => {}),
     reconnectIfRotated: vi.fn(async () => {}),
     releasedByReconnect: vi.fn(() => undefined),
+    activity: vi.fn(),
   } as unknown as TapflowClient
 }
+
+// A2: whoever watches the session sees each step as it starts, named without anything it types.
+describe('run_flow — tells watchers each step', () => {
+  it('sends one activity per step start, with what is typed left out', async () => {
+    const client = fakeClient([])
+    await (captureTools(client).get('run_flow') as Handler)({ sessionId: 's1', flow: 'steps:\n  - pressKey: Enter\n  - inputText: "hunter2"\n' })
+    expect(vi.mocked(client.activity).mock.calls).toEqual([['s1', 'step 1: pressKey(Enter)'], ['s1', 'step 2: inputText (7 chars)']])
+  })
+})
 
 describe('run_flow — install before replay', () => {
   const runFlowHandler = (client: TapflowClient) => captureTools(client).get('run_flow') as Handler

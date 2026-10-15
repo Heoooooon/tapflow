@@ -358,6 +358,8 @@ describe('browser-inbound routing matches the protocol union', () => {
       'network:set': 'payload requestId sessionId',
       'watch:start': 'sessionId',
       'watch:stop': 'sessionId',
+      // A2: a flow step's name for watchers; unanswered, so an older relay drops it with nothing waiting.
+      'session:activity': 'label sessionId',
     },
     RelayToAgent: {
       'agent:registered': 'registeredSessions',
@@ -381,6 +383,8 @@ describe('browser-inbound routing matches the protocol union', () => {
       'watch:refused': 'message reason sessionId',
       'watch:holder-left': 'sessionId',
       'watch:ended': 'reason sessionId',
+      // A2: what the holder did, built by the relay — never a forwarded input frame.
+      'watch:action': 'action at sessionId',
     },
   }
 

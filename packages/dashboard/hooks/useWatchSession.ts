@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { WatchEndReason, WatchRefusal } from '@tapflowio/protocol'
 import { useRelay } from '@/hooks/useRelay'
 import { CODEC_AUDIO, HEADER_SIZE, parseEnvelopeHeader, type BinaryFrameHandler } from '@/lib/envelope'
+import { MARK_MS, MAX_ACTIONS, isMark, type WatchedAction } from '@/lib/watchActions'
 import type { BrowserInbound, ChromePayload, DeviceSummary, PosturesPayload } from '@/lib/types'
 
 /** Where a watch stands, as the page says it. */
@@ -33,6 +34,15 @@ export function useWatchSession(sessionId: string) {
    *  leaves it out (an agent reconnecting), so the page does not lose its title for a few seconds. */
   const [device, setDevice] = useState<DeviceSummary | null>(null)
   const binaryFrameHandlerRef = useRef<BinaryFrameHandler | undefined>(undefined)
+  /** What the holder did since this page started watching (A2), newest first; and the taps and swipes still drawn. */
+  const [actions, setActions] = useState<WatchedAction[]>([])
+  const [marks, setMarks] = useState<WatchedAction[]>([])
+  const nextId = useRef(0)
+  const markTimers = useRef(new Set<ReturnType<typeof setTimeout>>())
+  useEffect(() => {
+    const timers = markTimers.current
+    return () => { for (const t of timers) clearTimeout(t) }
+  }, [])
 
   const handleMessage = useCallback((msg: BrowserInbound) => {
     // The relay's `device:ready` replay carries no `sessionId`; everything else names one.
@@ -57,6 +67,18 @@ export function useWatchSession(sessionId: string) {
     else if (msg.type === 'device:postures') setPostures(msg.payload)
     else if (msg.type === 'device:booting') { setChrome(null); setPostures(undefined); setDeviceReady(false); setAgentAway(false) }
     else if (msg.type === 'device:ready') { setDeviceReady(true); setAgentAway(false) }
+    else if (msg.type === 'watch:action') {
+      const entry: WatchedAction = { id: nextId.current++, at: msg.at, action: msg.action }
+      setActions((prev) => [entry, ...prev].slice(0, MAX_ACTIONS))
+      if (isMark(msg.action)) {
+        setMarks((prev) => [...prev, entry])
+        const timer = setTimeout(() => {
+          markTimers.current.delete(timer)
+          setMarks((prev) => prev.filter((m) => m.id !== entry.id))
+        }, MARK_MS)
+        markTimers.current.add(timer)
+      }
+    }
   }, [sessionId])
 
   // Video only. The relay sends watchers no audio; an envelope that says audio is dropped here too, so a
@@ -88,5 +110,5 @@ export function useWatchSession(sessionId: string) {
     return () => clearInterval(id)
   }, [connected, send, sessionId])
 
-  return { phase, device, chrome, postures, deviceReady, holderLeft, agentAway, connected, binaryFrameHandlerRef }
+  return { phase, device, chrome, postures, deviceReady, holderLeft, agentAway, connected, binaryFrameHandlerRef, actions, marks }
 }

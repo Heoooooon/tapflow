@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   leaveSession: vi.fn(() => {}),
   disconnect: vi.fn(() => {}),
   setStreamListener: vi.fn(),
+  activity: vi.fn(),
 }))
 
 vi.mock('@tapflowio/flow-runner', async (importOriginal) => ({
@@ -40,6 +41,7 @@ vi.mock('@tapflowio/flow-runner', async (importOriginal) => ({
     leaveSession = mocks.leaveSession
     disconnect = mocks.disconnect
     setStreamListener = mocks.setStreamListener
+    activity = mocks.activity
   },
   RelayDriver: class {
     constructor(..._args: unknown[]) {}
@@ -111,6 +113,17 @@ describe('cmdFlowRun exit codes (#543)', () => {
 
   // Printed before the device boots, so the person who started the run has the link while it is still worth
   // watching. `vi.stubEnv` because this suite itself may run under CI.
+  // A2: watchers see each step as it starts, under the engine's redacted label; the video keeps its own marks.
+  it('tells the session each step as it starts, by its watcher label', async () => {
+    mocks.runFlow.mockImplementation(async (_flow: unknown, _driver: unknown, opts?: { onStep?: (m: Record<string, unknown>) => void }) => {
+      opts?.onStep?.({ index: 1, name: 'inputText("hunter2")', phase: 'start', label: 'inputText (7 chars)' })
+      opts?.onStep?.({ index: 1, name: 'inputText("hunter2")', phase: 'end', status: 'passed' })
+      return resultOf('passed')
+    })
+    await run([flowFile('a.yaml')])
+    expect(mocks.activity.mock.calls).toEqual([['s1', 'step 2: inputText (7 chars)']])
+  })
+
   it('prints where to watch the run', async () => {
     vi.stubEnv('CI', '')
     vi.stubEnv('JENKINS_URL', '')

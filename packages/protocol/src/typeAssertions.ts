@@ -23,7 +23,7 @@ import type {
   StreamRegistered, StreamRequestIdr, UiTreeError, UiTreeRequest, UiTreeResponse,
   NetworkRequestState,
   InputPosture, DevicePostures,
-  WatchStart, WatchStop, WatchStarted, WatchRefused, WatchHolderLeft, WatchEnded,
+  WatchStart, WatchStop, WatchStarted, WatchRefused, WatchHolderLeft, WatchEnded, WatchAction, SessionActivity,
 } from './index.js'
 
 // ── must NOT compile ─────────────────────────────────────────────────────────
@@ -220,6 +220,8 @@ export const _WatchStarted: WatchStarted['type'] = 'watch:started'
 export const _WatchRefused: WatchRefused['type'] = 'watch:refused'
 export const _WatchHolderLeft: WatchHolderLeft['type'] = 'watch:holder-left'
 export const _WatchEnded: WatchEnded['type'] = 'watch:ended'
+export const _WatchAction: WatchAction['type'] = 'watch:action'
+export const _SessionActivity: SessionActivity['type'] = 'session:activity'
 
 // ── membership: what a browser may send, and what an agent produces, do not overlap ──────────────
 //

@@ -30,7 +30,8 @@ export interface EngineOptions {
    */
   captureLastScreen?: boolean
   /** Told as each step starts and ends — the run's video marks its timeline with them. Must not throw. */
-  onStep?: (mark: { index: number; name: string; phase: 'start' | 'end'; status?: 'passed' | 'failed' }) => void
+  /** `label`, on a step's start, is its name as watchers may see it (`activityLabel`). */
+  onStep?: (mark: { index: number; name: string; phase: 'start' | 'end'; status?: 'passed' | 'failed'; label?: string }) => void
 }
 
 export interface StepResult {
@@ -127,6 +128,26 @@ function describeStep(step: Step): string {
     case 'assertVisible': return `assertVisible(${describeSelector(step.selector)})`
     case 'assertNotVisible': return `assertNotVisible(${describeSelector(step.selector)})`
   }
+}
+
+/**
+ * A step's name as the watchers of a session may see it (A2) — the whole team, live. Unlike `describeStep`, which
+ * JUnit, video marks and `run_flow`'s results keep using, it drops what a flow types (`inputText`), the URL it opens
+ * (a deep link can carry a token) and a key that types a character. Keep the key rule in step with the relay's
+ * `keyForWatchers`.
+ */
+export function activityLabel(step: Step): string {
+  switch (step.type) {
+    case 'inputText': return `inputText (${[...step.text].length} chars)`
+    case 'openUrl': return 'openUrl'
+    case 'pressKey': return `pressKey(${typesCharacter(step.code) ? 'character' : step.code})`
+    default: return describeStep(step)
+  }
+}
+
+function typesCharacter(code: string): boolean {
+  return /^(Key[A-Z]|Digit\d|Numpad\d|Numpad(Add|Subtract|Multiply|Divide|Decimal)|Space|Minus|Equal|Bracket(Left|Right)|Backslash|Semicolon|Quote|Backquote|Comma|Period|Slash|IntlBackslash|IntlRo|IntlYen)$/.test(code)
+    || code.length === 1
 }
 
 function normalizeTimeoutMs(value: number, label: string): number {
@@ -318,7 +339,7 @@ export async function runFlow(flow: Flow, driver: FlowDriver, options: EngineOpt
       continue
     }
     const stepStart = Date.now()
-    options.onStep?.({ index, name, phase: 'start' })
+    options.onStep?.({ index, name, phase: 'start', label: activityLabel(step) })
     try {
       await executeStep(step, flow, driver, timeoutMs, pollIntervalMs)
       steps.push({ index, name, status: 'passed', durationMs: Date.now() - stepStart })

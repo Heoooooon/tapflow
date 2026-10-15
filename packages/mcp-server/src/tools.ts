@@ -429,7 +429,10 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
           await client.installApp(sessionId, buildId)
         }
         const driver = makeFlowDriver(client, sessionId, buildId)
-        const result = await runFlow(parsed, driver)
+        // Each step as it starts, for whoever watches this session (A2); named without anything it types.
+        const result = await runFlow(parsed, driver, {
+          onStep: (mark) => { if (mark.phase === 'start' && mark.label) client.activity(sessionId, `step ${mark.index + 1}: ${mark.label}`) },
+        })
 
         let screenshotPath: string | undefined
         if (result.failureScreenshot) {

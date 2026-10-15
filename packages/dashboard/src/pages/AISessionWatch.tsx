@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { useBreadcrumb } from '@/hooks/useBreadcrumb'
 import { useWatchSession } from '@/hooks/useWatchSession'
 import { WatchedDevice } from '@/components/device/WatchedDevice'
+import { ActionList } from '@/components/watch/ActionList'
 import { holderKindLabel, watchEndText, watchRefusalText } from '@/lib/aiSession'
 
 /**
@@ -63,14 +64,18 @@ function WatchView({ sessionId }: { sessionId: string }) {
           </Button>
         </div>
       ) : (
-        <div role="region" aria-label="Device screen" className="flex items-start gap-8">
+        <div className="flex items-start gap-8">
+          <div role="region" aria-label="Device screen">
           <WatchedDevice
             chrome={watch.chrome}
             deviceReady={watch.deviceReady}
             platform={device?.platform ?? 'ios'}
             formFactor={device?.formFactor}
             binaryFrameHandlerRef={watch.binaryFrameHandlerRef}
+            marks={watch.marks}
           />
+          </div>
+          <ActionList actions={watch.actions} driver={driver} />
         </div>
       )}
     </div>

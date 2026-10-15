@@ -123,6 +123,17 @@ describe('runFlow', () => {
     expect(result.steps[0]).not.toHaveProperty('suggestions')
   })
 
+  // A2: the name watchers see drops what a step types, the URL it opens and a key that types a character.
+  it('names each step for watchers without what it types', async () => {
+    const marks: Record<string, unknown>[] = []
+    const driver = fakeDriver([[el({ label: 'ok' })]])
+    await runFlow(flowOf('steps:\n  - inputText: "hunter2"\n  - openUrl: "myapp://reset?token=s3cret"\n  - pressKey: KeyA\n  - pressKey: Enter\n  - tapOn: "ok"\n'), driver, { ...OPTS, onStep: (m) => marks.push(m) })
+    expect(marks.filter((m) => m['phase'] === 'start').map((m) => m['label'])).toEqual([
+      'inputText (7 chars)', 'openUrl', 'pressKey(character)', 'pressKey(Enter)', 'tapOn("ok")',
+    ])
+    expect(JSON.stringify(marks.map((m) => m['label']))).not.toMatch(/hunter2|s3cret/)
+  })
+
   it('disambiguates a shared label by role', async () => {
     const driver = fakeDriver([[
       el({ role: 'button', label: 'New Orders', frame: { x: 0.1, y: 0.2, width: 0.2, height: 0.1 } }),
@@ -588,9 +599,9 @@ describe('runFlow onStep (the run video\'s timeline)', () => {
       pollIntervalMs: 1, defaultTimeoutMs: 20, onStep: (m) => marks.push(m),
     })
     expect(marks).toEqual([
-      { index: 0, name: expect.any(String), phase: 'start' },
+      { index: 0, name: expect.any(String), phase: 'start', label: 'pressKey(Enter)' },
       { index: 0, name: expect.any(String), phase: 'end', status: 'passed' },
-      { index: 1, name: expect.any(String), phase: 'start' },
+      { index: 1, name: expect.any(String), phase: 'start', label: 'openUrl' },
       { index: 1, name: expect.any(String), phase: 'end', status: 'failed' },
     ])
   })

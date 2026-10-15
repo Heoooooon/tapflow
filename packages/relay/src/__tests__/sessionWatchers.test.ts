@@ -10,7 +10,7 @@ import { config } from '../lib/config'
 import { barrier, waitForOpen, waitForType, waitForTypeOrNull } from '@tapflowio/test-utils'
 import type {
   AgentRegistered, AgentsListed, DeviceShutdownError, GenericError, InputError, SessionJoined,
-  WatchEnded, WatchRefused,
+  WatchAction, WatchEnded, WatchRefused,
 } from '@tapflowio/protocol'
 
 // Every keyframe-aware sender the relay makes, and every socket each one ever wrote to. The relay's own
@@ -230,6 +230,100 @@ describe('session watchers', () => {
     await join(other, sessionId, 'mcp')
     await barrier(agent)
     expect(fromAgent.filter((m) => m['type'] === 'stream:request-idr').length).toBeGreaterThan(0)
+  })
+
+  // ── A2: what the holder does, told to its watchers ──────────────────────────────────────────────────
+  /** A watched MCP session, and every frame its watcher receives, raw. */
+  async function watched() {
+    const { sessionId, agent, fromAgent } = await registerAgent()
+    const mcp = await socket('mcp1')
+    await join(mcp, sessionId, 'mcp')
+    const viewer = await socket(undefined, 1)
+    await watch(viewer, sessionId)
+    const raw: string[] = []
+    viewer.on('message', (d, isBinary) => { if (!isBinary) raw.push(d.toString()) })
+    const actions = () => raw.map((r) => JSON.parse(r) as { type: string }).filter((m): m is WatchAction => m.type === 'watch:action').map((m) => m.action)
+    const send = (msg: Record<string, unknown>) => mcp.send(JSON.stringify({ sessionId, ...msg }))
+    const settled = async () => { await barrier(mcp); await barrier(agent); await barrier(viewer) }
+    return { sessionId, agent, fromAgent, mcp, viewer, raw, actions, send, settled }
+  }
+
+  it('tells a watcher the holder tapped, and where', async () => {
+    const w = await watched()
+    w.send({ type: 'input:touch:start', payload: { x: 0.5, y: 0.8 } })
+    w.send({ type: 'input:touch:end', requestId: 'r1', payload: { x: 0.505, y: 0.8 } })
+    await w.settled()
+    expect(w.actions()).toEqual([{ kind: 'tap', x: 0.5, y: 0.8 }])
+  })
+
+  it('tells a drag as one swipe at its end, not a frame per move', async () => {
+    const w = await watched()
+    w.send({ type: 'input:touch:start', payload: { x: 0.5, y: 0.8 } })
+    for (const y of [0.75, 0.7, 0.6, 0.5, 0.4, 0.3]) w.send({ type: 'input:touch:move', payload: { x: 0.5, y } })
+    w.send({ type: 'input:touch:end', requestId: 'r1' })
+    await w.settled()
+    expect(w.actions()).toEqual([{ kind: 'swipe', from: [0.5, 0.8], to: [0.5, 0.3] }])
+  })
+
+  it('tells typing as a count, and never puts the text on a watcher\'s wire', async () => {
+    const w = await watched()
+    w.send({ type: 'input:type', requestId: 'r1', payload: { text: 'hunter2🔑' } })
+    await w.settled()
+    // The action arrived — so its absence below is the text's, not the frame's.
+    expect(w.actions()).toEqual([{ kind: 'type', chars: 8 }])
+    expect(w.raw.join('\n')).not.toContain('hunter2')
+  })
+
+  it('names a key unless it types a character, and a button once per press', async () => {
+    const w = await watched()
+    w.send({ type: 'input:key', requestId: 'r1', payload: { code: 'Enter' } })
+    w.send({ type: 'input:key', requestId: 'r2', payload: { code: 'KeyP' } })
+    w.send({ type: 'input:button', requestId: 'r3', payload: { name: 'home', phase: 'down' } })
+    w.send({ type: 'input:button', requestId: 'r4', payload: { name: 'home', phase: 'up' } })
+    await w.settled()
+    expect(w.actions()).toEqual([{ kind: 'key', key: 'Enter' }, { kind: 'key', key: 'character' }, { kind: 'button', button: 'home' }])
+    expect(w.raw.join('\n')).not.toContain('KeyP')
+  })
+
+  it('tells an opened URL without the URL', async () => {
+    const w = await watched()
+    w.send({ type: 'open-url', requestId: 'r1', payload: { url: 'myapp://reset?token=s3cret' } })
+    await w.settled()
+    expect(w.actions()).toEqual([{ kind: 'open-url' }])
+    expect(w.raw.join('\n')).not.toContain('s3cret')
+  })
+
+  it('passes the holder\'s own label on, and nobody else\'s', async () => {
+    const w = await watched()
+    w.send({ type: 'session:activity', label: '  step 3: tapOn("Sign in")  ' })
+    const other = await socket('mcp2')
+    other.send(JSON.stringify({ type: 'session:activity', sessionId: w.sessionId, label: 'not mine' }))
+    await barrier(other)
+    await w.settled()
+    expect(w.actions()).toEqual([{ kind: 'label', label: 'step 3: tapOn("Sign in")' }])
+  })
+
+  it('tells a watcher nothing about an input the relay did not pass on', async () => {
+    const w = await watched()
+    const other = await socket('mcp2')
+    other.send(JSON.stringify({ type: 'input:touch:start', sessionId: w.sessionId, payload: { x: 0.1, y: 0.1 } }))
+    other.send(JSON.stringify({ type: 'input:touch:end', sessionId: w.sessionId, requestId: 'x1', payload: { x: 0.1, y: 0.1 } }))
+    await waitForType(other, 'input:error')
+    await w.settled()
+    expect(w.actions()).toEqual([])
+  })
+
+  it('remembers a touch that began before anyone watched', async () => {
+    const { sessionId } = await registerAgent()
+    const mcp = await socket('mcp1')
+    await join(mcp, sessionId, 'mcp')
+    mcp.send(JSON.stringify({ type: 'input:touch:start', sessionId, payload: { x: 0.2, y: 0.9 } }))
+    await barrier(mcp)
+    const viewer = await socket(undefined, 1)
+    await watch(viewer, sessionId)
+    const action = waitForType<WatchAction>(viewer, 'watch:action')
+    mcp.send(JSON.stringify({ type: 'input:touch:end', sessionId, requestId: 'r1', payload: { x: 0.2, y: 0.3 } }))
+    expect((await action).action).toEqual({ kind: 'swipe', from: [0.2, 0.9], to: [0.2, 0.3] })
   })
 
   it('refuses a watcher\'s input, and nothing reaches the agent', async () => {

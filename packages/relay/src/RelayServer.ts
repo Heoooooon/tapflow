@@ -8,7 +8,8 @@ import { WebSocketServer, WebSocket } from 'ws'
 import { SessionManager, isAiClientKind } from './SessionManager.js'
 import type { Session } from './SessionManager.js'
 import type { DeviceDetails, UIElement } from './types.js'
-import type { ChromePayload, InputErrorReason, RelayOutbound, PosturesPayload, WatchRefusal } from '@tapflowio/protocol'
+import type { ChromePayload, InputErrorReason, RelayOutbound, PosturesPayload, WatchActionKind, WatchRefusal } from '@tapflowio/protocol'
+import { gestureAction, keyForWatchers } from './lib/watchActions.js'
 import { directionOf, parseInbound } from '@tapflowio/protocol/validate'
 import type { ParsedInbound, ParseFailure, ParseResult } from '@tapflowio/protocol/validate'
 import { Router, json } from './router.js'
@@ -1546,6 +1547,14 @@ export class RelayServer {
 
       // ── Session / Stream lifecycle ─────────────────────────────────────────
       case 'session:start':    this.handleSessionStart(ws, msg); break
+      case 'session:activity': {
+        // A holder's name for what it is about to do (A2), for its watchers only. Unanswered either way, so an
+        // unowned one is simply dropped; the schema already capped its length.
+        const session = this.sessions.get(msg.sessionId)
+        const label = msg.label.trim()
+        if (session && label && this.ownsSession(ws, session)) this.tellWatchersAction(session.id, { kind: 'label', label })
+        break
+      }
       case 'watch:start':      this.handleWatchStart(ws, msg); break
       // Unanswered, like `session:leave`: nobody waits on it, and closing the socket does the same.
       case 'watch:stop': {
@@ -1882,6 +1891,8 @@ export class RelayServer {
         const target = this.dispatchTarget(ws, msg.sessionId)
         if (target.ok) {
           target.session.agentSocket.send(JSON.stringify(msg))
+          // No URL: a deep link can carry a token, and watchers are the whole team.
+          this.tellWatchersAction(msg.sessionId, { kind: 'open-url' })
         } else {
           this.sendTo(ws, {
             type: 'open-url:error',
@@ -1898,6 +1909,7 @@ export class RelayServer {
         const target = this.dispatchTarget(ws, msg.sessionId)
         if (target.ok) {
           target.session.agentSocket.send(JSON.stringify(msg))
+          this.tellWatchersAction(msg.sessionId, { kind: 'clear-state' })
         } else {
           this.sendTo(ws, {
             type: 'app:clear-state-error',
@@ -2596,6 +2608,35 @@ export class RelayServer {
     for (const w of watchers) if (w.readyState === WebSocket.OPEN) w.send(frame)
   }
 
+  /**
+   * What the holder just did, as its watchers are told it (A2): only for an input the relay passed on to the agent,
+   * so a refused one is never shown. **Built, never forwarded**: the raw `input:type` carries the text typed, and a
+   * watcher gets a count.
+   */
+  private tellWatchersInput(session: Session, msg: Acked): void {
+    let action: WatchActionKind | null = null
+    switch (msg.type) {
+      case 'input:touch:end': {
+        const g = session.gesture
+        session.gesture = null
+        action = gestureAction(g?.start ?? null, msg.payload ?? g?.last ?? null)
+        break
+      }
+      case 'input:pinch:end': action = { kind: 'pinch' }; break
+      case 'input:key': action = { kind: 'key', key: keyForWatchers(msg.payload.code) }; break
+      // One press is a down and an up from a client that sends both; told once, on the up.
+      case 'input:button': action = msg.payload.phase === 'down' ? null : { kind: 'button', button: msg.payload.name }; break
+      case 'input:type': action = { kind: 'type', chars: [...msg.payload.text].length }; break
+    }
+    if (action) this.tellWatchersAction(session.id, action)
+  }
+
+  private tellWatchersAction(sessionId: string, action: WatchActionKind): void {
+    const watchers = this.sessions.watchersOf(sessionId)
+    if (watchers.length === 0) return
+    for (const w of watchers) this.sendTo(w, { type: 'watch:action', sessionId, at: Date.now(), action })
+  }
+
   /** The relay-originated half of what watchers hear: holder left, agent away, agent rebound. */
   private tellWatchers(sessionId: string, msg: RelayOutbound): void {
     for (const w of this.sessions.watchersOf(sessionId)) this.sendTo(w, msg)
@@ -2781,6 +2822,10 @@ export class RelayServer {
     }
     if (session?.agentSocket.readyState === WebSocket.OPEN) {
       session.agentSocket.send(JSON.stringify(msg))
+      // Where a touch began and last was, for its end to be told to watchers (A2). Moves are not sent on: one
+      // action per gesture, at its end.
+      if (msg.type === 'input:touch:start') session.gesture = { start: msg.payload, last: msg.payload }
+      else if (msg.type === 'input:touch:move' && session.gesture) session.gesture.last = msg.payload
     }
   }
 
@@ -2811,6 +2856,7 @@ export class RelayServer {
 
     if (session?.agentSocket.readyState === WebSocket.OPEN) {
       session.agentSocket.send(JSON.stringify(msg))
+      this.tellWatchersInput(session, msg)
       return
     }
 
@@ -2969,6 +3015,7 @@ export class RelayServer {
         buildBytes: bytes,
       },
     })
+    this.tellWatchersAction(sessionId, { kind: 'install' })
   }
 
   /**
@@ -3028,6 +3075,7 @@ export class RelayServer {
       requestId,
       payload: { bundleId: build.bundle_id },
     })
+    this.tellWatchersAction(sessionId, { kind: 'launch' })
   }
 
   private async handleGetScreenshot(

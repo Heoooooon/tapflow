@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { BrowserToRelay } from '@tapflowio/protocol'
 import { BreadcrumbProvider } from '@/hooks/useBreadcrumb'
@@ -28,7 +28,9 @@ vi.mock('@/hooks/useRelay', async () => {
   }
 })
 vi.mock('@/components/device/WatchedDevice', () => ({
-  WatchedDevice: ({ platform }: { platform: string }) => <div data-testid="watched-device" data-platform={platform} />,
+  WatchedDevice: ({ platform, marks }: { platform: string; marks?: { action: { kind: string } }[] }) => (
+    <div data-testid="watched-device" data-platform={platform} data-marks={marks ? marks.map((m) => m.action.kind).join(',') : 'none'} />
+  ),
 }))
 
 const { AISessionWatch } = await import('../pages/AISessionWatch')
@@ -66,6 +68,41 @@ beforeEach(() => {
   send.mockClear()
   relay.deliver = null
   relay.setConnected = null
+})
+
+// A2: what the agent does, as it does it — a list beside the device and a mark on it.
+describe('the watch page\'s actions', () => {
+  const action = (a: Record<string, unknown>, at = 1_700_000_000_000) =>
+    deliver({ type: 'watch:action', sessionId: 'sess-a', at, action: a } as BrowserInbound)
+
+  it('lists what the agent does, newest first, and draws a tap on the device for a moment', async () => {
+    renderAt('/automation/sessions/sess-a')
+    await deliver({ type: 'watch:started', sessionId: 'sess-a' })
+    expect(screen.getByText(/Nothing yet/)).toBeTruthy()
+    await action({ kind: 'label', label: 'step 3: tapOn("Sign in")' })
+    await action({ kind: 'tap', x: 0.5, y: 0.8 })
+    await action({ kind: 'type', chars: 8 })
+    const items = within(screen.getByRole('list')).getAllByRole('listitem').map((li) => li.textContent)
+    expect(items.map((t) => t?.replace(/^[\d:\s APM]+/, ''))).toEqual(['Typed 8 characters', 'Tap at 50%, 80%', 'step 3: tapOn("Sign in")'])
+    expect(screen.getByTestId('watched-device').dataset.marks).toBe('tap')
+    await vi.waitFor(() => expect(screen.getByTestId('watched-device').dataset.marks).toBe(''), { timeout: 2000 })
+  })
+
+  it('ignores another session\'s actions', async () => {
+    renderAt('/automation/sessions/sess-a')
+    await deliver({ type: 'watch:started', sessionId: 'sess-a' })
+    await deliver({ type: 'watch:action', sessionId: 'sess-b', at: 1, action: { kind: 'tap', x: 0.1, y: 0.1 } } as BrowserInbound)
+    expect(screen.getByText(/Nothing yet/)).toBeTruthy()
+  })
+
+  it('keeps the last hundred', async () => {
+    renderAt('/automation/sessions/sess-a')
+    await deliver({ type: 'watch:started', sessionId: 'sess-a' })
+    for (let i = 0; i < 105; i++) await action({ kind: 'key', key: `F${i}` })
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(100)
+    expect(screen.getByText('Key F104')).toBeTruthy()
+    expect(screen.queryByText('Key F4')).toBeNull()
+  })
 })
 
 describe('the watch page', () => {

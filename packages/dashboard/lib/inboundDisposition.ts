@@ -134,4 +134,5 @@ export const INBOUND_DISPOSITION = {
   'watch:refused': { at: 'useWatchSession' },
   'watch:holder-left': { at: 'useWatchSession' },
   'watch:ended': { at: 'useWatchSession' },
+  'watch:action': { at: 'useWatchSession' },
 } satisfies Record<BrowserInbound['type'], Disposition>
