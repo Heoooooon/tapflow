@@ -31,7 +31,10 @@ export function suggestSelectors(tree: UIElement[], sel: Selector): SelectorSugg
   const wanted = { text: sel.text, id: sel.id, label: sel.label }
   const ranked = tree
     .map((e, order) => ({ e, order, score: onScreen(e) ? scoreElement(e, wanted) : 0 }))
-    .filter((c) => c.score > 0)
+    // An image only by the same name. Its label is usually an asset name ("donut", "topping/zigzag-blue-thumb"), not
+    // text anyone sees, so a near one is noise — and seen on Food Truck, a missing "Donuts" card suggested the donut
+    // icon in an order row, which opens that order.
+    .filter((c) => c.score > 0 && (c.e.role !== 'image' || c.score === 1))
     .sort((a, b) => b.score - a.score || a.order - b.order)
 
   const out: SelectorSuggestion[] = []

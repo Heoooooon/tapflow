@@ -31,6 +31,13 @@ describe('suggestSelectors', () => {
     expect(suggestSelectors(tree, { label: 'pay  now!' })[0]!.yaml).toBe('tapOn: "Pay now"')
   })
 
+  // Food Truck: the "Donuts" card was below the fold, and the only near name on screen was an order row's donut icon.
+  it('offers an image only by the same name — its label is an asset name, not text anyone sees', () => {
+    const icon = el('donut', { role: 'image', frame: { x: 0.57, y: 0.7, width: 0.06, height: 0.02 } })
+    expect(suggestSelectors([icon, el('Order#1234', { role: 'text' })], { text: 'Donuts' })).toEqual([])
+    expect(suggestSelectors([icon], { text: 'Donut' })[0]!.element).toEqual({ role: 'image', label: 'donut' })
+  })
+
   it('offers an id for an id selector with a typo', () => {
     const tree = [el('', { identifier: 'com.example.app:id/login_button' }), el('', { identifier: 'com.example.app:id/signup_button' })]
     expect(suggestSelectors(tree, { id: 'com.example.app:id/login_buton' })[0]!.yaml).toBe('tapOn: { id: "com.example.app:id/login_button" }')
