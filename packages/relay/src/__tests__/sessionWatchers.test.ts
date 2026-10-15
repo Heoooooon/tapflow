@@ -315,11 +315,12 @@ describe('session watchers', () => {
 
   it('names no character a numpad or punctuation key types', async () => {
     const w = await watched()
-    for (const [i, code] of ['NumpadComma', 'NumpadEqual', 'Digit7', 'Period'].entries()) {
+    const codes = ['NumpadComma', 'NumpadEqual', 'NumpadParenLeft', 'NumpadParenRight', 'NumpadHash', 'NumpadStar', 'Digit7', 'Period']
+    for (const [i, code] of codes.entries()) {
       w.send({ type: 'input:key', requestId: `k${i}`, payload: { code } })
     }
     await w.settled()
-    expect(w.actions()).toEqual(Array(4).fill({ kind: 'key', key: 'character' }))
+    expect(w.actions()).toEqual(Array(codes.length).fill({ kind: 'key', key: 'character' }))
   })
 
   it('does not end a touch the holder began before it joined again', async () => {
