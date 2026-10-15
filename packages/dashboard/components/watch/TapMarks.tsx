@@ -3,14 +3,15 @@ import type { WatchedAction } from '@/lib/watchActions'
 /**
  * Where the holder just tapped or swiped (A2), drawn over the device for a moment. `place` turns a point on the
  * device's screen (0–1, as on the wire) into a position in the overlay's own box — that box is the whole device
- * frame on iOS and the screen on Android, so the conversion is the platform's.
+ * frame on iOS and the screen on Android, so the conversion is the platform's. Drawn under the stalled-stream notice
+ * (z 8), so a mark does not suggest live input on a picture the page says has stopped.
  */
 export function TapMarks({ marks, place }: {
   marks: WatchedAction[]
   place: (x: number, y: number) => { left: number; top: number }
 }) {
   return (
-    <div aria-hidden="true" data-testid="tap-marks" className="pointer-events-none absolute inset-0" style={{ zIndex: 12 }}>
+    <div aria-hidden="true" data-testid="tap-marks" className="pointer-events-none absolute inset-0" style={{ zIndex: 5 }}>
       {marks.map(({ id, action }) => {
         if (action.kind === 'tap') {
           const p = place(action.x, action.y)

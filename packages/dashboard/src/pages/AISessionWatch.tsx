@@ -64,7 +64,7 @@ function WatchView({ sessionId }: { sessionId: string }) {
           </Button>
         </div>
       ) : (
-        <div className="flex items-start gap-8">
+        <div className="flex flex-col items-start gap-8 lg:flex-row">
           <div role="region" aria-label="Device screen">
           <WatchedDevice
             chrome={watch.chrome}

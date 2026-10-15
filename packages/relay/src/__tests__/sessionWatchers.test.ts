@@ -313,6 +313,24 @@ describe('session watchers', () => {
     expect(w.actions()).toEqual([])
   })
 
+  it('names no character a numpad or punctuation key types', async () => {
+    const w = await watched()
+    for (const [i, code] of ['NumpadComma', 'NumpadEqual', 'Digit7', 'Period'].entries()) {
+      w.send({ type: 'input:key', requestId: `k${i}`, payload: { code } })
+    }
+    await w.settled()
+    expect(w.actions()).toEqual(Array(4).fill({ kind: 'key', key: 'character' }))
+  })
+
+  it('does not end a touch the holder began before it joined again', async () => {
+    const w = await watched()
+    w.send({ type: 'input:touch:start', payload: { x: 0.1, y: 0.1 } })
+    await join(w.mcp, w.sessionId, 'mcp')
+    w.send({ type: 'input:touch:end', requestId: 'r1', payload: { x: 0.9, y: 0.9 } })
+    await w.settled()
+    expect(w.actions()).toEqual([{ kind: 'tap', x: 0.9, y: 0.9 }])
+  })
+
   it('remembers a touch that began before anyone watched', async () => {
     const { sessionId } = await registerAgent()
     const mcp = await socket('mcp1')

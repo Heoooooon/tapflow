@@ -7,7 +7,7 @@ import { actionText, type WatchedAction } from '@/lib/watchActions'
  */
 export function ActionList({ actions, driver }: { actions: WatchedAction[]; driver: string }) {
   return (
-    <section aria-labelledby="watch-actions-title" className="flex w-80 shrink-0 flex-col gap-2">
+    <section aria-labelledby="watch-actions-title" className="flex w-full max-w-md shrink-0 flex-col gap-2 lg:w-80">
       <h2 id="watch-actions-title" className="text-sm font-medium">Actions</h2>
       {actions.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing yet. What the {driver} does appears here as it happens.</p>

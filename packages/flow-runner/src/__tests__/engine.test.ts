@@ -127,9 +127,9 @@ describe('runFlow', () => {
   it('names each step for watchers without what it types', async () => {
     const marks: Record<string, unknown>[] = []
     const driver = fakeDriver([[el({ label: 'ok' })]])
-    await runFlow(flowOf('steps:\n  - inputText: "hunter2"\n  - openUrl: "myapp://reset?token=s3cret"\n  - pressKey: KeyA\n  - pressKey: Enter\n  - tapOn: "ok"\n'), driver, { ...OPTS, onStep: (m) => marks.push(m) })
+    await runFlow(flowOf('steps:\n  - inputText: "hunter2"\n  - openUrl: "myapp://reset?token=s3cret"\n  - pressKey: KeyA\n  - pressKey: NumpadComma\n  - pressKey: Enter\n  - tapOn: "ok"\n'), driver, { ...OPTS, onStep: (m) => marks.push(m) })
     expect(marks.filter((m) => m['phase'] === 'start').map((m) => m['label'])).toEqual([
-      'inputText (7 chars)', 'openUrl', 'pressKey(character)', 'pressKey(Enter)', 'tapOn("ok")',
+      'inputText (7 chars)', 'openUrl', 'pressKey(character)', 'pressKey(character)', 'pressKey(Enter)', 'tapOn("ok")',
     ])
     expect(JSON.stringify(marks.map((m) => m['label']))).not.toMatch(/hunter2|s3cret/)
   })

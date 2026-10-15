@@ -300,6 +300,8 @@ export class SessionManager {
     session.holderKind = holder.kind ?? null
     session.holderLabel = holder.label
     session.holderStream = holder.stream !== false
+    // A touch the previous holder began is not this one's to end.
+    session.gesture = null
     // Also when the same client re-joins as something that is not an AI client: a watch is admitted to an
     // AI client's session, and only that kind may be watched.
     this.evictWatchers(sessionId, 'holder-changed', (admitted) => admitted !== owner.key || !isAiClientKind(holder.kind))

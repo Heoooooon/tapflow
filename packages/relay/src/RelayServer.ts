@@ -1549,7 +1549,9 @@ export class RelayServer {
       case 'session:start':    this.handleSessionStart(ws, msg); break
       case 'session:activity': {
         // A holder's name for what it is about to do (A2), for its watchers only. Unanswered either way, so an
-        // unowned one is simply dropped; the schema already capped its length.
+        // unowned one is simply dropped; the schema already capped its length. **Its content is trusted, not
+        // checked**: the rule that it carries nothing typed binds the sender (`activityLabel` is the only producer),
+        // and a holder that broke it could show no more than it already can on the screen its watchers see.
         const session = this.sessions.get(msg.sessionId)
         const label = msg.label.trim()
         if (session && label && this.ownsSession(ws, session)) this.tellWatchersAction(session.id, { kind: 'label', label })
