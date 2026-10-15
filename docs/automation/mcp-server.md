@@ -174,7 +174,7 @@ The page is reached only through the link. It is for the person who asked the co
 - Watching is read-only. Nothing you click reaches the device, and there is no sound.
 - Any teammate signed in to the dashboard can watch. Whatever the coding agent types on the device shows on screen too, so do not test with values the team should not see.
 - Up to 4 people can watch one session at a time.
-- The **Actions** list beside the device shows what the coding agent does, newest first, and a tap or swipe is marked on the device for a moment. When a flow runs through `run_flow` or `tapflow flow run`, each step's name is listed as it starts. Typing shows as a count of characters, and the URL opened or the character key pressed is not named. Nothing is stored, so the list starts when you open the page.
+- **Agent activity** beside the device shows what the coding agent does, in the order it happens, and a tap or swipe is marked on the device for a moment. When a flow runs through `run_flow` or `tapflow flow run`, each step is a row that opens onto the actions taken in it, and the latest step is open. Typing shows as a count of characters, and the URL opened or the character key pressed is not named. Nothing is stored, so the log starts when you open the page. When the session ends, the last picture and the log stay until you close the page.
 - If the coding agent's connection drops briefly, the page keeps the last picture and waits for it to come back. The watch ends when the coding agent finishes with the session (`disconnect_device`) or another teammate starts using the device.
 
 ::: details How the link address is chosen

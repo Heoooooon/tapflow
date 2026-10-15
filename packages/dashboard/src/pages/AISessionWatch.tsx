@@ -33,6 +33,7 @@ function WatchView({ sessionId }: { sessionId: string }) {
   }, [setBreadcrumb, device?.name])
 
   const over = phase.kind === 'ended' || phase.kind === 'refused'
+  const refused = phase.kind === 'refused'
   // Never a bare "agent": in tapflow's words that is the process on the Mac, which the line above names.
   const driver = device?.holder ? holderKindLabel(device.holder.kind).toLowerCase() : 'AI client'
   const status =
@@ -61,13 +62,16 @@ function WatchView({ sessionId }: { sessionId: string }) {
         {/* Mounted once with only the text changing: a live region inserted together with its first sentence is
             routinely not announced, and each of these states is one a viewer is waiting on. */}
         <p role="status" className="text-sm text-muted-foreground">{status}</p>
-        {over ? (
+        {over && (
           <div>
             <Button asChild variant="outline" size="sm">
               <Link to="/app-center"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back to App Center</Link>
             </Button>
           </div>
-        ) : (
+        )}
+        {/* **Kept after the watch ends**: the last picture stays, without the live stall notice, and the activity
+            beside it stays to be read. A refused watch never had either. */}
+        {!refused && (
           <div role="region" aria-label="Device screen" className="flex justify-center px-8">
             <WatchedDevice
               chrome={watch.chrome}
@@ -76,14 +80,15 @@ function WatchView({ sessionId }: { sessionId: string }) {
               formFactor={device?.formFactor}
               binaryFrameHandlerRef={watch.binaryFrameHandlerRef}
               marks={watch.marks}
+              replay={over}
             />
           </div>
         )}
       </div>
-      {!over && (
+      {!refused && (
         <>
           <Separator orientation="vertical" className="hidden h-auto lg:block" />
-          <AgentActivity actions={watch.actions} driver={driver} />
+          <AgentActivity actions={watch.actions} driver={driver} live={!over} />
         </>
       )}
     </div>
