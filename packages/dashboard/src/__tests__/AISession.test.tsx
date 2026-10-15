@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { BrowserToRelay } from '@tapflowio/protocol'
 import { BreadcrumbProvider } from '@/hooks/useBreadcrumb'
@@ -28,7 +28,13 @@ vi.mock('@/hooks/useRelay', async () => {
   }
 })
 vi.mock('@/components/device/WatchedDevice', () => ({
-  WatchedDevice: ({ platform }: { platform: string }) => <div data-testid="watched-device" data-platform={platform} />,
+  WatchedDevice: ({ platform, marks }: { platform: string; marks?: { cursor: { x: number; y: number } | null; trails: { kind: string }[] } }) => (
+    <div
+      data-testid="watched-device" data-platform={platform}
+      data-marks={marks ? marks.trails.map((t) => t.kind).join(',') : 'none'}
+      data-cursor={marks?.cursor ? `${marks.cursor.x},${marks.cursor.y}` : 'none'}
+    />
+  ),
 }))
 
 const { AISessionWatch } = await import('../pages/AISessionWatch')
@@ -68,6 +74,78 @@ beforeEach(() => {
   relay.setConnected = null
 })
 
+// A2: what the agent does, as it does it — a list beside the device and a mark on it.
+describe('the watch page\'s actions', () => {
+  const action = (a: Record<string, unknown>, at = 1_700_000_000_000) =>
+    deliver({ type: 'watch:action', sessionId: 'sess-a', at, action: a } as BrowserInbound)
+
+  it('lists what the agent does as it happened, under the step it belongs to, and draws a tap for a moment', async () => {
+    renderAt('/automation/sessions/sess-a')
+    await deliver({ type: 'watch:started', sessionId: 'sess-a' })
+    expect(screen.getByText(/Nothing yet/)).toBeTruthy()
+    await action({ kind: 'label', label: 'step 3: tapOn("Sign in")' })
+    await action({ kind: 'tap', x: 0.5, y: 0.8 })
+    await action({ kind: 'type', chars: 8 })
+    // The step is a row that opens onto its actions; the latest step is open.
+    const step = screen.getByRole('button', { name: 'step 3: tapOn("Sign in")' })
+    expect(step.getAttribute('aria-expanded')).toBe('true')
+    const inside = within(document.getElementById(step.getAttribute('aria-controls')!)!).getAllByRole('listitem')
+    expect(inside.map((li) => li.textContent)).toEqual(['Tap at 50%, 80%', 'Typed 8 characters'])
+    // The time is there for whoever asks, not on every line.
+    expect(inside[0]!.firstElementChild!.getAttribute('title')).toMatch(/\d/)
+    expect(screen.getByRole('heading', { name: 'Agent activity' })).toBeTruthy()
+    expect(screen.getByTestId('watched-device').dataset.marks).toBe('tap')
+    // The trail fades; the cursor stays where the agent last tapped.
+    await vi.waitFor(() => expect(screen.getByTestId('watched-device').dataset.marks).toBe(''), { timeout: 2000 })
+    expect(screen.getByTestId('watched-device').dataset.cursor).toBe('0.5,0.8')
+  })
+
+  it('opens every step, and keeps one someone closed closed', async () => {
+    renderAt('/automation/sessions/sess-a')
+    await deliver({ type: 'watch:started', sessionId: 'sess-a' })
+    await action({ kind: 'label', label: 'step 1: tapOn("A")' })
+    await action({ kind: 'tap', x: 0.1, y: 0.1 })
+    await action({ kind: 'label', label: 'step 2: tapOn("B")' })
+    await action({ kind: 'tap', x: 0.2, y: 0.2 })
+    const first = screen.getByRole('button', { name: 'step 1: tapOn("A")' })
+    expect(first.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByText('Tap at 10%, 10%')).toBeTruthy()
+    await act(async () => { first.click() })
+    expect(screen.queryByText('Tap at 10%, 10%')).toBeNull()
+    await action({ kind: 'label', label: 'step 3: tapOn("C")' })
+    expect(screen.getByRole('button', { name: 'step 1: tapOn("A")' }).getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getByRole('button', { name: 'step 2: tapOn("B")' }).getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('keeps the last picture and the activity once the watch ends', async () => {
+    renderAt('/automation/sessions/sess-a')
+    await deliver({ type: 'watch:started', sessionId: 'sess-a' })
+    await action({ kind: 'label', label: 'step 1: launchApp' })
+    await action({ kind: 'launch' })
+    await deliver({ type: 'watch:ended', sessionId: 'sess-a', reason: 'session-ended' })
+    expect(screen.getByTestId('watched-device')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'step 1: launchApp' })).toBeTruthy()
+    expect(screen.getByText('Launched the app')).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Back to App Center/ })).toBeTruthy()
+  })
+
+  it('ignores another session\'s actions', async () => {
+    renderAt('/automation/sessions/sess-a')
+    await deliver({ type: 'watch:started', sessionId: 'sess-a' })
+    await deliver({ type: 'watch:action', sessionId: 'sess-b', at: 1, action: { kind: 'tap', x: 0.1, y: 0.1 } } as BrowserInbound)
+    expect(screen.getByText(/Nothing yet/)).toBeTruthy()
+  })
+
+  it('keeps the last hundred', async () => {
+    renderAt('/automation/sessions/sess-a')
+    await deliver({ type: 'watch:started', sessionId: 'sess-a' })
+    for (let i = 0; i < 105; i++) await action({ kind: 'key', key: `F${i}` })
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(100)
+    expect(screen.getByText('Key F104')).toBeTruthy()
+    expect(screen.queryByText('Key F4')).toBeNull()
+  })
+})
+
 describe('the watch page', () => {
   it('asks to watch, and sends nothing that would join, boot or shut the device down', async () => {
     renderAt('/automation/sessions/sess-a')
@@ -95,7 +173,8 @@ describe('the watch page', () => {
     await deliver({ type: 'watch:ended', sessionId: 'sess-a', reason: 'holder-changed' })
     expect(screen.getByRole('status').textContent).toBe('Someone else picked up this device, so the watch ended.')
     expect(screen.getByRole('link', { name: /Back to App Center/ })).toBeTruthy()
-    expect(screen.queryByTestId('watched-device')).toBeNull()
+    // The last picture stays to be looked at (no frames come any more); the activity beside it stays too.
+    expect(screen.getByTestId('watched-device')).toBeTruthy()
     send.mockClear()
     await reconnect()
     expect(sentTypes()).not.toContain('watch:start')

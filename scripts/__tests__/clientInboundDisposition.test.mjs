@@ -112,11 +112,11 @@ describe('both clients declare what they do with every browser-inbound message',
       const table = entries(readFileSync(join(root, dir, 'inboundDisposition.ts'), 'utf8'))
       const src = scanned(dir).map(code).join('\n')
 
-      it('parsed every entry — 36, the browser-inbound surface', () => {
+      it('parsed every entry — 37, the browser-inbound surface', () => {
         // The compiler already refuses a missing key, so this is the parser's honesty check rather than
         // the coverage one. Pinned from the measurement: 29 as of #542, which added `device:shutdown-error`;
-        // 32 by the next count, and 36 once the four `watch:*` replies arrived.
-        expect(table.size).toBe(36)
+        // 32 by the next count, 36 once the four `watch:*` replies arrived, and 37 with `watch:action` (A2).
+        expect(table.size).toBe(37)
       })
 
       it('every entry is exactly one of settles / does / ignored', () => {

@@ -1103,6 +1103,33 @@ export interface WatchEnded {
   reason: WatchEndReason
 }
 
+/**
+ * What the holder of a watched session just did, for its watchers only (A2). Built by the relay from the input and
+ * app commands it passed on to the agent — "passed on", not "applied" — and from the holder's own `session:activity`
+ * labels. Never the text typed (`type` carries a count) nor a URL opened. Nothing is stored: a watcher sees what
+ * happens after it joins.
+ */
+export type WatchActionKind =
+  | { kind: 'tap'; x: number; y: number }
+  | { kind: 'swipe'; from: [number, number]; to: [number, number] }
+  | { kind: 'key'; key: string }
+  | { kind: 'button'; button: string }
+  | { kind: 'type'; chars: number }
+  | { kind: 'pinch' }
+  | { kind: 'launch' }
+  | { kind: 'install' }
+  | { kind: 'clear-state' }
+  | { kind: 'open-url' }
+  | { kind: 'label'; label: string }
+
+export interface WatchAction {
+  type: 'watch:action'
+  sessionId: string
+  /** The relay's clock, ms since the epoch. */
+  at: number
+  action: WatchActionKind
+}
+
 /** Messages the relay originates and no agent sends. */
 export type RelayToBrowser =
   | RelayOrAgentToBrowser
@@ -1116,6 +1143,7 @@ export type RelayToBrowser =
   | WatchRefused
   | WatchHolderLeft
   | WatchEnded
+  | WatchAction
 
 export interface DeviceBooting {
   type: 'device:booting'
@@ -1552,6 +1580,17 @@ export interface WatchStart {
   sessionId: string
 }
 
+/**
+ * A human-readable name for what the holder is about to do — a flow step — shown to the session's watchers (A2).
+ * Unanswered and optional: an older relay drops the unknown type without a reply, so a client sends it and moves on.
+ * At most 200 characters, and never something typed or a URL: watchers are the whole team.
+ */
+export interface SessionActivity {
+  type: 'session:activity'
+  sessionId: string
+  label: string
+}
+
 /** Stop watching. Unanswered: there is no waiter, and closing the socket does the same. */
 export interface WatchStop {
   type: 'watch:stop'
@@ -1808,4 +1847,5 @@ export type BrowserToRelay =
   | NetworkSet
   | WatchStart
   | WatchStop
+  | SessionActivity
 

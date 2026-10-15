@@ -354,6 +354,9 @@ const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 // Minimal relay client for the deterministic runner: WebSocket for session and
 // input control, REST for ui-tree and screenshots. Mirrors the message shapes
 // the dashboard and mcp-server already use.
+/** The relay's cap on a `session:activity` label; a longer one is dropped whole, so it is cut here first. */
+const ACTIVITY_MAX = 200
+
 export class RelayClient {
   private ws: WebSocket | null = null
   /**
@@ -684,6 +687,16 @@ export class RelayClient {
   private sendFirstRequest(msg: BrowserToRelay): void {
     if (this.ws?.readyState === WebSocket.CLOSING) return
     this.send(msg)
+  }
+
+  /**
+   * Tells the session's watchers what this client is about to do (A2) — a step's `activityLabel`, never anything
+   * typed. Fire and forget: unanswered by any relay, dropped by an older one, and never worth failing a run over.
+   */
+  activity(sessionId: string, label: string): void {
+    const cut = [...label.trim()].slice(0, ACTIVITY_MAX).join('')
+    if (!cut) return
+    try { this.send({ type: 'session:activity', sessionId, label: cut }) } catch { /* not connected: nothing to tell */ }
   }
 
   async listDevices(): Promise<AgentSession[]> {

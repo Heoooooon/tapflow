@@ -1261,6 +1261,16 @@ export class TapflowClient {
     return body.elements
   }
 
+  /**
+   * Tells the session's watchers what is about to happen (A2): a `run_flow` step's `activityLabel`, never anything
+   * typed. Fire and forget — no relay answers it and an older one drops it.
+   */
+  activity(sessionId: string, label: string): void {
+    const cut = [...label.trim()].slice(0, 200).join('')
+    if (!cut) return
+    try { this.send({ type: 'session:activity', sessionId, label: cut }) } catch { /* not connected: nothing to tell */ }
+  }
+
   /** Run records `tapflow flow run` left on the relay, newest first (B3). Read-only. */
   async listRuns(filter: RunFilter): Promise<{ runs: RunInfo[]; nextCursor: string | null }> {
     const url = new URL('/api/v1/runs', this.httpBase())

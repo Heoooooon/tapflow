@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { WebSocket } from 'ws'
 import type { DeviceStatus } from '@tapflowio/agent-core'
 import type { AgentResources, SessionInfo } from './types.js'
-import type { AiClientKind, ChromePayload, ClientKind, DeviceDetails, DeviceReport, FormFactor, PosturesPayload, WatchEndReason } from '@tapflowio/protocol'
+import type { AiClientKind, ChromePayload, ClientKind, DeviceDetails, DeviceReport, FormFactor, Point, PosturesPayload, WatchEndReason } from '@tapflowio/protocol'
 
 export interface Session {
   id: string
@@ -39,6 +39,9 @@ export interface Session {
   /** False when the holder said on `session:start` it does not read the stream (`stream: false`): the relay sends
    *  it no frames. Kept with the holder rather than on its socket, so it resets with every change of holder. */
   holderStream: boolean
+  /** Where the holder's current touch began and last was, so its end can be told to watchers as a tap or a swipe
+   *  (A2). Kept whether or not anyone watches: a watcher can arrive mid-gesture. Cleared at the end and with the holder. */
+  gesture: { start: Point; last: Point } | null
   streamSocket: WebSocket | null
   deviceId: string
   deviceName: string
@@ -176,6 +179,7 @@ export class SessionManager {
         holderKind: null,
         holderLabel: null,
         holderStream: true,
+        gesture: null,
         streamSocket: null,
         deviceId: d.id,
         readySent: false,
@@ -296,6 +300,8 @@ export class SessionManager {
     session.holderKind = holder.kind ?? null
     session.holderLabel = holder.label
     session.holderStream = holder.stream !== false
+    // A touch the previous holder began is not this one's to end.
+    session.gesture = null
     // Also when the same client re-joins as something that is not an AI client: a watch is admitted to an
     // AI client's session, and only that kind may be watched.
     this.evictWatchers(sessionId, 'holder-changed', (admitted) => admitted !== owner.key || !isAiClientKind(holder.kind))
@@ -331,6 +337,7 @@ export class SessionManager {
     session.holderKind = null
     session.holderLabel = null
     session.holderStream = true
+    session.gesture = null
     if (session.idleTimer) { clearTimeout(session.idleTimer); session.idleTimer = null }
     if (onTimeout) {
       session.idleTimer = setTimeout(() => {

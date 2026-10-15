@@ -81,6 +81,8 @@ fifth is refused with the reason (`watchRefusalText`).
 is in the middle of. The relay refuses those from a watching socket too; this is the half that does not depend
 on it. A watch that ended or was refused stays so across a reconnect (`AISession.test.tsx`).
 
+**What the holder does is told to its watchers (A2), and only them**: `watch:action`, built by the relay from the input and app commands it passed on, plus the holder's own `session:activity` step names. The page keeps the last 100 (`useWatchSession`), shows them as steps that open onto their actions (`AgentActivity`, Trace's look rebuilt as a disclosure — Trace is Base UI), keeps the last picture and the log after the watch ends, and draws the agent's pointer — a cursor that stays at the last tap and glides to the next, with a fading trail — through the screens' `overlay` (`TapMarks`, placed per platform: iOS through `iosScreenLayout`, Android in the screen's own space). The run video's replay passes no `marks`, so it draws none. Typing arrives as a count and an opened URL without the URL — never add a field that carries either.
+
 ### The React Compiler is on
 
 `babel-plugin-react-compiler` runs on this package through `reactPlugin.ts` — **shared by

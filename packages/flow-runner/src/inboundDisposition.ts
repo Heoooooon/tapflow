@@ -98,4 +98,5 @@ export const INBOUND_DISPOSITION = {
   'watch:refused': { ignored: 'Answers `watch:start`, which this client never sends.' },
   'watch:holder-left': { ignored: 'Sent only to a watching socket; this client never watches.' },
   'watch:ended': { ignored: 'Sent only to a watching socket; this client never watches.' },
+  'watch:action': { ignored: 'Sent only to a watching socket; this client never watches.' },
 } satisfies Record<BrowserInbound['type'], Disposition>

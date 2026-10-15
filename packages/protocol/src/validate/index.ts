@@ -62,7 +62,7 @@ import type {
   InputPinchEnd, InputPinchMove, InputPinchStart, InputPosture, InputRotate, InputTouchEnd, InputTouchMove,
   InputTouchStart, InputType, InputTypeDone, InputTypeError, KeyboardToggled, OpenUrl, OpenUrlDone,
   OpenUrlError, ScreenshotDone, ScreenshotError, SessionChrome, SessionDeviceInfo, SessionEnd,
-  SessionLeave, SessionStart, StreamRegister, UiTreeError, UiTreeResponse, WatchStart, WatchStop,
+  SessionActivity, SessionLeave, SessionStart, StreamRegister, UiTreeError, UiTreeResponse, WatchStart, WatchStop,
 } from '../index.js'
 import type { Assert, EnvelopeOf, IsEmpty, SchemaExact } from './assert.js'
 
@@ -118,6 +118,8 @@ const BROWSER_INBOUND = {
   }),
   'watch:start': z.object({ type: z.literal('watch:start'), sessionId }),
   'watch:stop': z.object({ type: z.literal('watch:stop'), sessionId }),
+  // Capped here as well as cut by the clients: an over-long frame is dropped whole, never answered.
+  'session:activity': z.object({ type: z.literal('session:activity'), sessionId, label: z.string().min(1).max(200) }),
   'session:end': z.object({ type: z.literal('session:end'), sessionId }),
   'session:leave': z.object({ type: z.literal('session:leave'), sessionId }),
   'device:boot': z.object({
@@ -554,6 +556,7 @@ type _ClipboardWrite = Assert<V<'clipboard:write', ClipboardWrite>>
 type _NetworkSet = Assert<V<'network:set', NetworkSet>>
 type _WatchStart = Assert<V<'watch:start', WatchStart>>
 type _WatchStop = Assert<V<'watch:stop', WatchStop>>
+type _SessionActivity = Assert<V<'session:activity', SessionActivity>>
 
 type _AgentRegister = Assert<V<'agent:register', AgentRegister>>
 type _AgentResources = Assert<V<'agent:resources', AgentResourceReport>>

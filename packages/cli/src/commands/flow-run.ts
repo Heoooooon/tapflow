@@ -11,6 +11,7 @@ import {
   tokenRefusal,
   type Flow,
   type FlowResult,
+  type EngineOptions,
   type DeviceInfo,
 } from '@tapflowio/flow-runner'
 import { ciContext, runningInCI } from '../lib/ci.js'
@@ -235,12 +236,17 @@ export async function cmdFlowRun(files: string[], opts: FlowRunOptions): Promise
     }
 
     const driver = new RelayDriver(client, sessionId, opts.build)
+    const relay = client
     const engineOpts = {
       ...(opts.timeout !== undefined ? { defaultTimeoutMs: Math.round(opts.timeout * 1000) } : {}),
       // A passed flow's last screen is evidence for the record; with nothing recording, it would be a screenshot per
       // flow taken for nobody.
       ...(recorder ? { captureLastScreen: true } : {}),
-      ...(video ? { onStep: (mark: Parameters<VideoTap['step']>[0]) => video?.tap.step(mark) } : {}),
+      onStep: ({ label, ...mark }: Parameters<NonNullable<EngineOptions['onStep']>>[0]) => {
+        // Whoever watches the run sees each step as it starts (A2), named without anything it types.
+        if (mark.phase === 'start' && label) relay.activity(sessionId, `step ${mark.index + 1}: ${label}`)
+        video?.tap.step(mark)
+      },
     }
     const results: FlowResult[] = []
 

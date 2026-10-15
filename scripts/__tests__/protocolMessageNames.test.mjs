@@ -174,8 +174,9 @@ describe('protocol message interfaces', () => {
     // network condition, so a re-joining viewer had no way to learn it. 72 is the posture pair —
     // `InputPosture` and `DevicePostures`, the foldable work: a device whose screens rearrange needs a
     // way to be asked and a way to say what it offers. 78 is the six `watch:*` messages — a teammate
-    // watching, read-only, the device an AI client is driving.
-    expect(messages.size).toBe(78)
+    // watching, read-only, the device an AI client is driving. 80 is A2's pair: `WatchAction`, what the holder
+    // just did, and `SessionActivity`, the holder's own name for it.
+    expect(messages.size).toBe(80)
     // `InputKey` predates L1 and has always been named; it must be in here too.
     expect(messages.has('InputKey')).toBe(true)
   })
