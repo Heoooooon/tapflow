@@ -75,15 +75,18 @@ describe('the watch page\'s actions', () => {
   const action = (a: Record<string, unknown>, at = 1_700_000_000_000) =>
     deliver({ type: 'watch:action', sessionId: 'sess-a', at, action: a } as BrowserInbound)
 
-  it('lists what the agent does, newest first, and draws a tap on the device for a moment', async () => {
+  it('lists what the agent does as it happened, under the step it belongs to, and draws a tap for a moment', async () => {
     renderAt('/automation/sessions/sess-a')
     await deliver({ type: 'watch:started', sessionId: 'sess-a' })
     expect(screen.getByText(/Nothing yet/)).toBeTruthy()
     await action({ kind: 'label', label: 'step 3: tapOn("Sign in")' })
     await action({ kind: 'tap', x: 0.5, y: 0.8 })
     await action({ kind: 'type', chars: 8 })
-    const items = within(screen.getByRole('list')).getAllByRole('listitem').map((li) => li.textContent)
-    expect(items.map((t) => t?.replace(/^[\d:\s APM]+/, ''))).toEqual(['Typed 8 characters', 'Tap at 50%, 80%', 'step 3: tapOn("Sign in")'])
+    const items = within(screen.getByRole('list')).getAllByRole('listitem')
+    expect(items.map((li) => li.textContent)).toEqual(['step 3: tapOn("Sign in")', 'Tap at 50%, 80%', 'Typed 8 characters'])
+    // The time is there for whoever asks, not on every line.
+    expect(items[1]!.getAttribute('title')).toMatch(/\d/)
+    expect(screen.getByRole('heading', { name: 'Agent activity' })).toBeTruthy()
     expect(screen.getByTestId('watched-device').dataset.marks).toBe('tap')
     await vi.waitFor(() => expect(screen.getByTestId('watched-device').dataset.marks).toBe(''), { timeout: 2000 })
   })

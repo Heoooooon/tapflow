@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button'
 import { useBreadcrumb } from '@/hooks/useBreadcrumb'
 import { useWatchSession } from '@/hooks/useWatchSession'
 import { WatchedDevice } from '@/components/device/WatchedDevice'
-import { ActionList } from '@/components/watch/ActionList'
+import { AgentActivity } from '@/components/watch/AgentActivity'
+import { Separator } from '@/components/ui/separator'
 import { holderKindLabel, watchEndText, watchRefusalText } from '@/lib/aiSession'
 
 /**
@@ -45,38 +46,45 @@ function WatchView({ sessionId }: { sessionId: string }) {
       : 'Watching. Nothing you do here reaches the device.'
 
   return (
-    <div className="flex flex-col gap-5 p-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold tracking-tight">{device?.name ?? 'AI session'}</h1>
-        {device?.holder && (
-          <p className="text-sm text-muted-foreground">
-            {holderKindLabel(device.holder.kind)} · {device.holder.user}
-          </p>
+    // Laid out as the QA session is: the device on the left, a rule, the panel on the right — stacked on a narrow
+    // screen, where the panel follows the device.
+    <div className="flex h-full min-h-0 flex-col gap-6 p-6 lg:flex-row">
+      <div className="flex min-w-0 flex-col gap-5">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-semibold tracking-tight">{device?.name ?? 'AI session'}</h1>
+          {device?.holder && (
+            <p className="text-sm text-muted-foreground">
+              {holderKindLabel(device.holder.kind)} · {device.holder.user}
+            </p>
+          )}
+        </div>
+        {/* Mounted once with only the text changing: a live region inserted together with its first sentence is
+            routinely not announced, and each of these states is one a viewer is waiting on. */}
+        <p role="status" className="text-sm text-muted-foreground">{status}</p>
+        {over ? (
+          <div>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/app-center"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back to App Center</Link>
+            </Button>
+          </div>
+        ) : (
+          <div role="region" aria-label="Device screen" className="flex justify-center px-8">
+            <WatchedDevice
+              chrome={watch.chrome}
+              deviceReady={watch.deviceReady}
+              platform={device?.platform ?? 'ios'}
+              formFactor={device?.formFactor}
+              binaryFrameHandlerRef={watch.binaryFrameHandlerRef}
+              marks={watch.marks}
+            />
+          </div>
         )}
       </div>
-      {/* Mounted once with only the text changing: a live region inserted together with its first sentence is
-          routinely not announced, and each of these states is one a viewer is waiting on. */}
-      <p role="status" className="text-sm text-muted-foreground">{status}</p>
-      {over ? (
-        <div>
-          <Button asChild variant="outline" size="sm">
-            <Link to="/app-center"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back to App Center</Link>
-          </Button>
-        </div>
-      ) : (
-        <div className="flex flex-col items-start gap-8 lg:flex-row">
-          <div role="region" aria-label="Device screen">
-          <WatchedDevice
-            chrome={watch.chrome}
-            deviceReady={watch.deviceReady}
-            platform={device?.platform ?? 'ios'}
-            formFactor={device?.formFactor}
-            binaryFrameHandlerRef={watch.binaryFrameHandlerRef}
-            marks={watch.marks}
-          />
-          </div>
-          <ActionList actions={watch.actions} driver={driver} />
-        </div>
+      {!over && (
+        <>
+          <Separator orientation="vertical" className="hidden h-auto lg:block" />
+          <AgentActivity actions={watch.actions} driver={driver} />
+        </>
       )}
     </div>
   )
