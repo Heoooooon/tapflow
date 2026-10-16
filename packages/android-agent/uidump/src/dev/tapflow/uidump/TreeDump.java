@@ -5,6 +5,7 @@ import android.graphics.Point;
 import android.view.Display;
 import android.view.accessibility.AccessibilityNodeInfo;
 import java.io.File;
+import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.TimeoutException;
 
 /**
@@ -18,11 +19,16 @@ import java.util.concurrent.TimeoutException;
  *   CLASSPATH=<this jar>:/system/framework/uiautomator.jar app_process /system/bin dev.tapflow.uidump.TreeDump <out> <idle ms>
  *
  * Those classes are not public API, so they are reached by reflection. When one is missing or has another shape, it
- * prints UNSUPPORTED and exits 3, and the agent goes back to `uiautomator dump` for that device.
+ * prints UNSUPPORTED and exits 3, and the agent goes back to `uiautomator dump` for that device. A failure inside
+ * them (another UiAutomation already connected, a node changing under the dump) is not that: it prints ERROR and
+ * exits 2, and only this one read falls back.
  */
 public final class TreeDump {
   private static final String UNSUPPORTED = "TAPFLOW_UIDUMP_UNSUPPORTED";
-  private static final long QUIET_MS = 100;
+  // Three times the 100 ms the framework spaces content-change events by, so the gaps inside an animation do not read
+  // as quiet and a read does not land mid-transition; a screen that never goes quiet is still read once idle ms have
+  // passed. uiautomator dump asks for 1000 (measured on a still screen: 2.05 s, against 1.1 s at 100 and ~2 s at 500).
+  private static final long QUIET_MS = 300;
 
   public static void main(String[] args) throws Exception {
     String out = args.length > 0 ? args[0] : "/dev/tty";
@@ -33,6 +39,9 @@ public final class TreeDump {
       wrapperClass = Class.forName("com.android.uiautomator.core.UiAutomationShellWrapper");
       wrapper = wrapperClass.getConstructor().newInstance();
       wrapperClass.getMethod("connect").invoke(wrapper);
+    } catch (InvocationTargetException e) {
+      failed(e);
+      return;
     } catch (ReflectiveOperationException e) {
       unsupported(e);
       return;
@@ -61,6 +70,8 @@ public final class TreeDump {
       Class.forName("com.android.uiautomator.core.AccessibilityNodeInfoDumper")
           .getMethod("dumpWindowToFile", AccessibilityNodeInfo.class, File.class, int.class, int.class, int.class)
           .invoke(null, root, new File(out), display.getRotation(), size.x, size.y);
+    } catch (InvocationTargetException e) {
+      failed(e);
     } catch (ReflectiveOperationException e) {
       unsupported(e);
     } finally {
@@ -70,6 +81,11 @@ public final class TreeDump {
         // Nothing to undo: the process ends here.
       }
     }
+  }
+
+  private static void failed(InvocationTargetException e) {
+    System.out.println("ERROR " + e.getCause());
+    System.exit(2);
   }
 
   private static void unsupported(ReflectiveOperationException e) {

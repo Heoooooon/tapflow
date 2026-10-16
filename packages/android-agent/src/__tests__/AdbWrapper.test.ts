@@ -660,7 +660,7 @@ describe('AdbWrapper', () => {
       expect(devicePath).toMatch(/^\/data\/local\/tmp\/tapflow-uidump-[0-9a-f]{12}\.jar$/)
       expect(ran(runner, 'app_process')[0]).toEqual([
         '-s', 'emulator-5554', 'exec-out', `CLASSPATH=${devicePath}:/system/framework/uiautomator.jar`,
-        'timeout', '10', 'app_process', '/system/bin', 'dev.tapflow.uidump.TreeDump', '/dev/tty', '1000',
+        'timeout', '4', 'app_process', '/system/bin', 'dev.tapflow.uidump.TreeDump', '/dev/tty', '1000',
       ])
       expect(ran(runner, 'uiautomator')).toHaveLength(0)
     })
@@ -687,12 +687,67 @@ describe('AdbWrapper', () => {
       expect(ran(runner, 'uiautomator')).toHaveLength(2)
     })
 
-    it('falls back for one dump that produced no XML, and tries the jar again next time', async () => {
-      const runner = dumper({ tree: 'ERROR: no active window to read\n', stock: XML })
+    it.each([
+      ['a failure inside the classes', 'ERROR java.lang.IllegalStateException: UiAutomationService already registered!\n'],
+      ['no window to read', 'ERROR: no active window to read\n'],
+    ])('falls back for one dump on %s, and tries the jar again next time', async (_, tree) => {
+      const runner = dumper({ tree, stock: XML })
       const wrapper = new AdbWrapper(runner)
       expect(await wrapper.dumpUiHierarchy('emulator-5554')).toBe(XML)
       await wrapper.dumpUiHierarchy('emulator-5554')
       expect(ran(runner, 'app_process')).toHaveLength(2)
+    })
+
+    it('runs one dump at a time on a device, since a second UiAutomation cannot connect', async () => {
+      let running = 0
+      let most = 0
+      const runner: AdbRunner = {
+        exec: vi.fn(async (...args: string[]) => {
+          if (!args.includes('app_process')) return ''
+          most = Math.max(most, ++running)
+          await new Promise((r) => setTimeout(r, 5))
+          running--
+          return XML
+        }),
+        execBinary: vi.fn(),
+        listAvds: vi.fn(async () => []),
+      }
+      const wrapper = new AdbWrapper(runner)
+      const reads = await Promise.all([1, 2, 3].map(() => wrapper.dumpUiHierarchy('emulator-5554')))
+      expect(reads).toEqual([XML, XML, XML])
+      expect(most).toBe(1)
+    })
+
+    it('goes on with the next dump after one that failed', async () => {
+      let trees = 0
+      const runner: AdbRunner = {
+        // The first read gets nothing from either dump; the one after it gets the tree.
+        exec: vi.fn(async (...args: string[]) => (args.includes('app_process') && trees++ > 0 ? XML : '')),
+        execBinary: vi.fn(),
+        listAvds: vi.fn(async () => []),
+      }
+      const wrapper = new AdbWrapper(runner)
+      const first = wrapper.dumpUiHierarchy('emulator-5554')
+      const second = wrapper.dumpUiHierarchy('emulator-5554')
+      await expect(first).rejects.toThrow(PlatformError)
+      await expect(second).resolves.toBe(XML)
+    })
+
+    // A wiped emulator comes back on the same serial with an empty /data/local/tmp.
+    it('pushes the jar again after a read that produced nothing it recognises', async () => {
+      const runner = dumper({ tree: 'Error: Could not find or load main class dev.tapflow.uidump.TreeDump\n', stock: XML })
+      const wrapper = new AdbWrapper(runner)
+      await wrapper.dumpUiHierarchy('emulator-5554')
+      await wrapper.dumpUiHierarchy('emulator-5554')
+      expect(ran(runner, 'push')).toHaveLength(2)
+    })
+
+    // With uiautomator dump after it, both must fit the relay's 15 s tree deadline.
+    it('gives the jar a shorter cap than the dump it falls back to', async () => {
+      const runner = dumper({ tree: '', stock: XML })
+      await new AdbWrapper(runner).dumpUiHierarchy('emulator-5554', 10)
+      expect(ran(runner, 'app_process')[0]).toContain('4')
+      expect(ran(runner, 'uiautomator')[0]).toContain('10')
     })
 
     it('falls back when the jar cannot be pushed', async () => {

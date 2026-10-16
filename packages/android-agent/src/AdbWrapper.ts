@@ -13,8 +13,9 @@ const logger = createLogger('android-agent:adb-wrapper')
 // `scripts/build-uidump.sh`). Resolved from `dist/` and `src/` alike.
 const UIDUMP_JAR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../bin/tapflow-uidump.jar')
 // How long the dump waits for the screen to go quiet before reading it anyway. `uiautomator dump` asks for a second
-// of quiet and fails after ten; this asks for 100 ms and reads the screen as it is after a second.
+// of quiet and fails after ten; this asks for 300 ms and reads the screen as it is after a second.
 const UIDUMP_IDLE_MS = 1000
+const UIDUMP_TIMEOUT_SEC = 4
 
 // Encode text for `adb shell input text`: space → %s, literal % → \% (so a
 // user's "%s" isn't re-expanded to a space), and backslash-escape the other
@@ -53,6 +54,10 @@ export class AdbWrapper {
   private readonly uidumpPushed = new Map<string, Promise<string | undefined>>()
   private readonly uidumpUnsupported = new Set<string>()
   private uidumpDevicePath?: string
+  // One dump at a time per device: both dumps connect a UiAutomation, and a second one connecting while the first is
+  // up fails ("UiAutomationService … already registered", measured 2 of 3 with three at once). A dashboard read during
+  // a flow's is enough to get there.
+  private readonly dumpQueue = new Map<string, Promise<unknown>>()
 
   constructor(private readonly runner: AdbRunner = defaultRunner) {}
 
@@ -391,18 +396,32 @@ export class AdbWrapper {
    *
    * `uiautomator dump` waits for a second of quiet and fails after ten on a screen that never settles (measured: a
    * running stopwatch, 2 of 2 after 11 s), so every selector step there failed. The tree dump jar reads the same
-   * classes with the wait bounded and not fatal (10 of 10 there; 1.1 s against 2.1 s on a still screen, same XML).
+   * classes with the wait bounded and not fatal (a running stopwatch: 2.0 s, 4 of 4; a still screen: 1.3 s against
+   * 2.05 s; same XML).
    * `uiautomator dump` stays the fallback: for a device whose image lacks those classes (remembered), or when the jar
    * cannot be pushed or produced no XML. A dump with no XML is an explicit `PlatformError`, never a silent empty tree.
    */
   async dumpUiHierarchy(serial: string, timeoutSec = 10): Promise<string> {
+    const previous = this.dumpQueue.get(serial) ?? Promise.resolve()
+    const mine = previous.catch(() => {}).then(() => this.dumpNow(serial, timeoutSec))
+    this.dumpQueue.set(serial, mine)
+    try {
+      return await mine
+    } finally {
+      if (this.dumpQueue.get(serial) === mine) this.dumpQueue.delete(serial)
+    }
+  }
+
+  private async dumpNow(serial: string, timeoutSec: number): Promise<string> {
     if (!this.uidumpUnsupported.has(serial)) {
       const jar = await this.pushUidump(serial)
       if (jar) {
         const output = await this.runner.exec(
           '-s', serial, 'exec-out',
           `CLASSPATH=${jar}:/system/framework/uiautomator.jar`,
-          'timeout', String(timeoutSec), 'app_process', '/system/bin', 'dev.tapflow.uidump.TreeDump', '/dev/tty', String(UIDUMP_IDLE_MS),
+          // Its own work is bounded (the idle wait, then a second at most for a window), so a short cap: with
+          // `uiautomator dump` after it, the two must fit the relay's 15 s tree deadline.
+          'timeout', String(Math.min(timeoutSec, UIDUMP_TIMEOUT_SEC)), 'app_process', '/system/bin', 'dev.tapflow.uidump.TreeDump', '/dev/tty', String(UIDUMP_IDLE_MS),
         ).catch((e: unknown) => (e as { stdout?: string }).stdout ?? '')
         const xml = hierarchyXml(output)
         if (xml) return xml
@@ -410,6 +429,10 @@ export class AdbWrapper {
         if (output.includes('TAPFLOW_UIDUMP_UNSUPPORTED')) {
           this.uidumpUnsupported.add(serial)
           logger.warn(`tree dump unsupported on ${serial}, using uiautomator dump: ${output.trim().slice(0, 200)}`)
+        } else {
+          // The jar may be gone: a wiped emulator comes back on the same serial with an empty /data/local/tmp. Push
+          // again next time rather than fall back for the rest of the agent's life.
+          this.uidumpPushed.delete(serial)
         }
       }
     }

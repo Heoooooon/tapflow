@@ -5,13 +5,16 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
-D8="$(ls -d "$SDK"/build-tools/*/ | sort -V | tail -1)d8"
-ANDROID_JAR="$(ls -d "$SDK"/platforms/android-*/ | sort -V | tail -1)android.jar"
+# Numeric versions only: `sort -V` ranks a preview (android-Baklava, 36.0.0-rc1) above every release.
+D8="$(ls -d "$SDK"/build-tools/[0-9]*/ | /usr/bin/grep -v -- '-rc' | sort -V | tail -1)d8"
+ANDROID_JAR="$(ls -d "$SDK"/platforms/android-[0-9]*/ | sort -V | tail -1)android.jar"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 javac --release 8 -Xlint:-options -cp "$ANDROID_JAR" -d "$WORK/classes" $(find uidump/src -name '*.java')
 "$D8" --min-api 24 --output "$WORK" $(find "$WORK/classes" -name '*.class')
-(cd "$WORK" && zip -q -X tapflow-uidump.jar classes.dex)
+# A fixed timestamp, so rebuilding unchanged source with the same tools gives the same jar.
+touch -t 198001010000 "$WORK/classes.dex"
+(cd "$WORK" && TZ=UTC zip -q -X tapflow-uidump.jar classes.dex)
 cp "$WORK/tapflow-uidump.jar" bin/tapflow-uidump.jar
 # What the committed jar was built from; a test fails when the source changes without a rebuild.
 find uidump/src -name '*.java' | sort | xargs cat | shasum -a 256 | cut -d' ' -f1 > bin/tapflow-uidump.source-sha256
