@@ -1,7 +1,21 @@
 import type { Device } from '@tapflowio/agent-core'
 import { parseCornerRadius, parseDisplayMetrics, type DisplayMetrics } from './displayMetrics.js'
-import { PlatformError, ValidationError } from '@tapflowio/agent-core'
+import { PlatformError, ValidationError, createLogger } from '@tapflowio/agent-core'
+import { createHash } from 'crypto'
+import { readFileSync } from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { defaultRunner, type AdbRunner } from './adb.js'
+
+const logger = createLogger('android-agent:adb-wrapper')
+
+// The tree dump that reads a screen which never goes idle (`uidump/src/.../TreeDump.java`, built by
+// `scripts/build-uidump.sh`). Resolved from `dist/` and `src/` alike.
+const UIDUMP_JAR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../bin/tapflow-uidump.jar')
+// How long the dump waits for the screen to go quiet before reading it anyway. `uiautomator dump` asks for a second
+// of quiet and fails after ten; this asks for 300 ms and reads the screen as it is after a second.
+const UIDUMP_IDLE_MS = 1000
+const UIDUMP_TIMEOUT_SEC = 4
 
 // Encode text for `adb shell input text`: space → %s, literal % → \% (so a
 // user's "%s" isn't re-expanded to a space), and backslash-escape the other
@@ -35,6 +49,15 @@ const RESOLVE_WAIT_SEC = 3
 export class AdbWrapper {
   // avdId ("avd:<name>") → ADB serial ("emulator-5554")
   private readonly serialMap = new Map<string, string>()
+  // Per serial: whether the tree dump jar is on the device (one push per agent run), and devices whose image lacks
+  // the classes it needs, which go straight to `uiautomator dump` from then on.
+  private readonly uidumpPushed = new Map<string, Promise<string | undefined>>()
+  private readonly uidumpUnsupported = new Set<string>()
+  private uidumpDevicePath?: string
+  // One dump at a time per device: both dumps connect a UiAutomation, and a second one connecting while the first is
+  // up fails ("UiAutomationService … already registered", measured 2 of 3 with three at once). A dashboard read during
+  // a flow's is enough to get there.
+  private readonly dumpQueue = new Map<string, Promise<unknown>>()
 
   constructor(private readonly runner: AdbRunner = defaultRunner) {}
 
@@ -368,17 +391,84 @@ export class AdbWrapper {
     return this.runner.execBinary('-s', serial, 'exec-out', 'screencap', '-p')
   }
 
+  /**
+   * The screen's UI hierarchy as `uiautomator dump` XML.
+   *
+   * `uiautomator dump` waits for a second of quiet and fails after ten on a screen that never settles (measured: a
+   * running stopwatch, 2 of 2 after 11 s), so every selector step there failed. The tree dump jar reads the same
+   * classes with the wait bounded and not fatal (a running stopwatch: 2.0 s, 4 of 4; a still screen: 1.3 s against
+   * 2.05 s; same XML).
+   * `uiautomator dump` stays the fallback: for a device whose image lacks those classes (remembered), or when the jar
+   * cannot be pushed or produced no XML. A dump with no XML is an explicit `PlatformError`, never a silent empty tree.
+   */
+  async dumpUiHierarchy(serial: string, timeoutSec = 10): Promise<string> {
+    const previous = this.dumpQueue.get(serial) ?? Promise.resolve()
+    const mine = previous.catch(() => {}).then(() => this.dumpNow(serial, timeoutSec))
+    this.dumpQueue.set(serial, mine)
+    try {
+      return await mine
+    } finally {
+      if (this.dumpQueue.get(serial) === mine) this.dumpQueue.delete(serial)
+    }
+  }
+
+  private async dumpNow(serial: string, timeoutSec: number): Promise<string> {
+    if (!this.uidumpUnsupported.has(serial)) {
+      const jar = await this.pushUidump(serial)
+      if (jar) {
+        const output = await this.runner.exec(
+          '-s', serial, 'exec-out',
+          `CLASSPATH=${jar}:/system/framework/uiautomator.jar`,
+          // Its own work is bounded (the idle wait, then a second at most for a window), so a short cap: with
+          // `uiautomator dump` after it, the two must fit the relay's 15 s tree deadline.
+          'timeout', String(Math.min(timeoutSec, UIDUMP_TIMEOUT_SEC)), 'app_process', '/system/bin', 'dev.tapflow.uidump.TreeDump', '/dev/tty', String(UIDUMP_IDLE_MS),
+        ).catch((e: unknown) => (e as { stdout?: string }).stdout ?? '')
+        const xml = hierarchyXml(output)
+        if (xml) return xml
+        // `exec-out` does not carry the exit status, so the marker is what says the image is the problem.
+        if (output.includes('TAPFLOW_UIDUMP_UNSUPPORTED')) {
+          this.uidumpUnsupported.add(serial)
+          logger.warn(`tree dump unsupported on ${serial}, using uiautomator dump: ${output.trim().slice(0, 200)}`)
+        } else {
+          // The jar may be gone: a wiped emulator comes back on the same serial with an empty /data/local/tmp. Push
+          // again next time rather than fall back for the rest of the agent's life.
+          this.uidumpPushed.delete(serial)
+        }
+      }
+    }
+    return this.dumpWithUiautomator(serial, timeoutSec)
+  }
+
+  // The jar's path on the device, named by its content so a device never runs a stale one; undefined if it cannot be
+  // pushed (the dump then falls back). Once per serial for the agent's life.
+  private pushUidump(serial: string): Promise<string | undefined> {
+    let pushed = this.uidumpPushed.get(serial)
+    if (!pushed) {
+      pushed = (async () => {
+        try {
+          this.uidumpDevicePath ??= `/data/local/tmp/tapflow-uidump-${createHash('sha256').update(readFileSync(UIDUMP_JAR)).digest('hex').slice(0, 12)}.jar`
+          await this.runner.exec('-s', serial, 'push', UIDUMP_JAR, this.uidumpDevicePath)
+          return this.uidumpDevicePath
+        } catch (e) {
+          logger.warn(`could not push the tree dump to ${serial}, using uiautomator dump: ${(e as Error).message.slice(0, 200)}`)
+          return undefined
+        }
+      })()
+      this.uidumpPushed.set(serial, pushed)
+    }
+    return pushed
+  }
+
   // uiautomator waits for an idle window, so screens with continuous animation
   // can block forever — the device-side toybox `timeout` kills the dump and we
   // surface an explicit error instead of hanging (never a silent empty tree).
-  async dumpUiHierarchy(serial: string, timeoutSec = 10): Promise<string> {
+  private async dumpWithUiautomator(serial: string, timeoutSec: number): Promise<string> {
     const output = await this.runner.exec(
       '-s', serial, 'exec-out',
       'timeout', String(timeoutSec), 'uiautomator', 'dump', '/dev/tty',
     )
-    const start = output.indexOf('<?xml') >= 0 ? output.indexOf('<?xml') : output.indexOf('<hierarchy')
-    const end = output.lastIndexOf('</hierarchy>')
-    if (start < 0 || end < 0) {
+    const xml = hierarchyXml(output)
+    if (!xml) {
       const detail = output.trim().slice(0, 200)
       throw new PlatformError(
         `uiautomator dump produced no XML within ${timeoutSec}s` +
@@ -386,7 +476,7 @@ export class AdbWrapper {
         ' — screens with continuous animation block the dump; retry on a settled screen',
       )
     }
-    return output.slice(start, end + '</hierarchy>'.length)
+    return xml
   }
 
   // rotation is an Android user_rotation value (0=portrait, 3=canonical landscape home-left/punch-right).
@@ -519,4 +609,11 @@ export class AdbWrapper {
   async pkill(serial: string, pattern: string): Promise<void> {
     await this.runner.exec('-s', serial, 'shell', 'pkill', '-f', pattern)
   }
+}
+
+// The XML document in a dump's output, without the status lines around it; undefined when it is missing or cut off.
+function hierarchyXml(output: string): string | undefined {
+  const start = output.indexOf('<?xml') >= 0 ? output.indexOf('<?xml') : output.indexOf('<hierarchy')
+  const end = output.lastIndexOf('</hierarchy>')
+  return start < 0 || end < 0 ? undefined : output.slice(start, end + '</hierarchy>'.length)
 }
