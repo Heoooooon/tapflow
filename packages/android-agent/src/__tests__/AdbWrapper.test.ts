@@ -228,14 +228,64 @@ describe('AdbWrapper', () => {
   })
 
   describe('launchApp', () => {
-    it('calls adb shell monkey with LAUNCHER intent', async () => {
-      const runner = mockRunner()
-      const wrapper = new AdbWrapper(runner)
-      await wrapper.launchApp('emulator-5554', 'com.example.app')
-      expect(runner.exec).toHaveBeenCalledWith(
+    const PKG = 'com.example.app'
+    const START_FIELDS = ['-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.LAUNCHER', '-f', '0x10200000']
+    // Answers each adb call by what it runs, so a test names the device's replies rather than their order.
+    const launcher = (replies: { resolve?: string | Error; start?: string | Error; monkey?: string | Error }): AdbRunner => ({
+      exec: vi.fn(async (...args: string[]) => {
+        const reply = args.includes('resolve-activity') ? replies.resolve
+          : args.includes('am') ? replies.start
+            : args.includes('monkey') ? replies.monkey : ''
+        if (reply instanceof Error) throw reply
+        return reply ?? ''
+      }),
+      execBinary: vi.fn(),
+      listAvds: vi.fn(async () => []),
+    })
+    const ran = (runner: AdbRunner, what: string) => vi.mocked(runner.exec).mock.calls.filter((c) => c.includes(what))
+    const RESOLVED = 'priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=false\ncom.example.app/.MainActivity\n'
+    const STARTED = 'Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=com.example.app/.MainActivity }\nStatus: ok\nLaunchState: COLD\nActivity: com.example.app/.MainActivity\nTotalTime: 485\nWaitTime: 495\nComplete\n'
+
+    it('starts the resolved launcher activity and waits for its first frame, as the launcher would', async () => {
+      const runner = launcher({ resolve: RESOLVED, start: STARTED })
+      await new AdbWrapper(runner).launchApp('emulator-5554', PKG)
+      expect(ran(runner, 'am')).toEqual([[
+        '-s', 'emulator-5554', 'shell', 'timeout', '10', 'am', 'start', '-W', ...START_FIELDS, '-n', 'com.example.app/.MainActivity',
+      ]])
+      expect(ran(runner, 'monkey')).toHaveLength(0)
+    })
+
+    it.each([
+      ['the app was already running', 'Warning: Activity not started, its current task has been brought to the front\n'],
+      ['the app was slow to draw', 'Starting: Intent { cmp=com.example.app/.MainActivity }\nStatus: timeout\nComplete\n'],
+    ])('counts it launched when %s, and does not launch it a second time', async (_, start) => {
+      const runner = launcher({ resolve: RESOLVED, start })
+      await new AdbWrapper(runner).launchApp('emulator-5554', PKG)
+      expect(ran(runner, 'monkey')).toHaveLength(0)
+    })
+
+    it('counts it launched when the device-side timeout ends the wait after the intent went out', async () => {
+      const expired = Object.assign(new Error('Command failed: adb … exit 124'), { stdout: 'Starting: Intent { cmp=com.example.app/.MainActivity }\n' })
+      const runner = launcher({ resolve: RESOLVED, start: expired })
+      await new AdbWrapper(runner).launchApp('emulator-5554', PKG)
+      expect(ran(runner, 'monkey')).toHaveLength(0)
+    })
+
+    it.each([
+      ['am start reports an error', { resolve: RESOLVED, start: 'Starting: Intent { cmp=com.example.app/.MainActivity }\nError type 3\nError: Activity class {com.example.app/.MainActivity} does not exist.\n' }],
+      ['am start fails before starting anything', { resolve: RESOLVED, start: new Error('adb: device offline') }],
+      ['two launcher activities resolve to the system chooser', { resolve: 'priority=0\nandroid/com.android.internal.app.ResolverActivity\n' }],
+      ['no launcher activity resolves', { resolve: 'No activity found\n' }],
+      ['the image has no cmd package', { resolve: new Error('cmd: Can\'t find service: package') }],
+      ['the class name would be expanded by the device shell', { resolve: 'com.example.app/.Main$Inner\n' }],
+      ['another package answers', { resolve: 'com.example.app.evil/.MainActivity\n' }],
+    ])('falls back to monkey when %s', async (_, replies) => {
+      const runner = launcher(replies)
+      await new AdbWrapper(runner).launchApp('emulator-5554', PKG)
+      expect(ran(runner, 'monkey')).toEqual([[
         '-s', 'emulator-5554', 'shell', 'monkey', '--pct-syskeys', '0',
-        '-p', 'com.example.app', '-c', 'android.intent.category.LAUNCHER', '1',
-      )
+        '-p', PKG, '-c', 'android.intent.category.LAUNCHER', '1',
+      ]])
     })
 
     // monkey gives 2% of its events to system keys by default, and on a device with no physical
@@ -243,9 +293,9 @@ describe('AdbWrapper', () => {
     // launch included. Asserted apart from the full argument list so a rewrite that drops it, or
     // moves it after the count where monkey no longer reads options, fails here.
     it('sets the system-key share to zero so monkey runs on a device with no physical keys', async () => {
-      const runner = mockRunner()
-      await new AdbWrapper(runner).launchApp('emulator-5554', 'com.example.app')
-      const args = vi.mocked(runner.exec).mock.calls[0]
+      const runner = launcher({ resolve: 'No activity found\n' })
+      await new AdbWrapper(runner).launchApp('emulator-5554', PKG)
+      const args = ran(runner, 'monkey')[0]!
       const i = args.indexOf('--pct-syskeys')
       expect(i).toBeGreaterThan(args.indexOf('monkey'))
       expect(i).toBeLessThan(args.indexOf('-p'))

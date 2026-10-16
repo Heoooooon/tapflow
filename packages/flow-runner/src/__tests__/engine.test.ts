@@ -123,28 +123,96 @@ describe('runFlow', () => {
     expect(result.steps[0]).not.toHaveProperty('suggestions')
   })
 
-  describe('launchApp waits for the app to show a screen', () => {
+  describe('launchApp waits for the app\'s screen to hold still', () => {
+    const SLOW = { pollIntervalMs: 500, defaultTimeoutMs: 10_000 }
+    // Runs a flow under fake timers. `reads` answers each tree query in turn (the last repeats); a function is
+    // called instead, so a test can throw or spend time. Returns when each query started and when the swipe went.
+    async function launchThenScroll(reads: Array<UIElement[] | (() => UIElement[])>) {
+      vi.useFakeTimers()
+      try {
+        const t0 = Date.now()
+        const queries: number[] = []
+        let swipeAt = -1
+        const driver = fakeDriver([])
+        let i = 0
+        driver.queryUITree = vi.fn(async () => {
+          queries.push(Date.now() - t0)
+          const r = reads[Math.min(i++, reads.length - 1)]!
+          return typeof r === 'function' ? r() : r
+        })
+        driver.swipe = vi.fn(async () => { swipeAt = Date.now() - t0 })
+        const run = runFlow(flowOf('steps:\n  - launchApp\n  - scroll: down\n'), driver, SLOW)
+        await vi.advanceTimersByTimeAsync(20_000)
+        const result = await run
+        return { result, queries, swipeAt }
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+    const screen = [el({ label: 'Home' }), el({ label: 'Settings', identifier: 'settings' })]
+
     // Seen on iOS: a scroll sent right after launch was acknowledged and dropped by the app, 5 of 5.
-    it('sends the next coordinate step only once the tree has something in it', async () => {
-      const driver = fakeDriver([[], [], [el({ label: 'Home' })]])
-      const order: string[] = []
-      driver.queryUITree = vi.fn(async () => {
-        const t = [[], [], [el({ label: 'Home' })]][Math.min(order.filter((o) => o === 'tree').length, 2)]!
-        order.push('tree')
-        return t
-      })
-      driver.swipe = vi.fn(async () => { order.push('swipe') })
-      const result = await runFlow(flowOf('steps:\n  - launchApp\n  - scroll: down\n'), driver, OPTS)
+    it('sends the next step once the same screen has read for a second, counted from when it was first read', async () => {
+      const { result, queries, swipeAt } = await launchThenScroll([screen])
       expect(result.status).toBe('passed')
-      expect(order).toEqual(['tree', 'tree', 'tree', 'swipe'])
+      // Reads 500 ms apart: the second is only 500 ms after the first, so it is the third that confirms.
+      expect(queries).toEqual([0, 500, 1000])
+      expect(swipeAt).toBe(1000)
+    })
+
+    // Measured on a Flutter iOS app: the first tree that reads is its splash, one element.
+    it('does not take a splash for the screen when the screen follows it', async () => {
+      const { queries, swipeAt } = await launchThenScroll([[el({ label: 'splash' })], screen])
+      expect(queries).toEqual([0, 500, 1000, 1500])
+      expect(swipeAt).toBe(1500)
+    })
+
+    it('compares role, label and identifier, not where things are drawn', async () => {
+      let x = 0
+      const moving = () => [el({ label: 'donut', frame: { x: (x = (x + 0.1) % 0.5), y: 0, width: 0.1, height: 0.1 } })]
+      const { swipeAt } = await launchThenScroll([moving])
+      expect(swipeAt).toBe(1000)
+    })
+
+    it('treats a label that changes as a different screen', async () => {
+      const relabelled = [el({ label: 'Home' }), el({ label: 'Settings', identifier: 'other' })]
+      const { swipeAt } = await launchThenScroll([screen, relabelled, relabelled, relabelled])
+      expect(swipeAt).toBe(1500)
     })
 
     // A game, canvas or WebView-only screen has nothing in the tree and is up all the same.
-    it('goes on after the timeout when the tree stays empty, without failing', async () => {
-      const driver = fakeDriver([[]])
-      const result = await runFlow(flowOf('steps:\n  - launchApp\n  - scroll: down\n'), driver, OPTS)
+    it('takes an empty tree that holds still as a screen, instead of waiting out the timeout', async () => {
+      const { result, swipeAt } = await launchThenScroll([[]])
       expect(result.status).toBe('passed')
-      expect(driver.calls).toEqual([['launchApp'], ['swipe', [0.5, 0.7], [0.5, 0.3], 300]])
+      expect(swipeAt).toBe(1000)
+    })
+
+    it('lets a failed read neither confirm nor reset the screen', async () => {
+      const notUp = () => { throw new TransientQueryError('not up yet') }
+      const { swipeAt } = await launchThenScroll([screen, notUp, screen])
+      expect(swipeAt).toBe(1000)
+    })
+
+    it('stops waiting 3 s after the first read on a screen that never holds still', async () => {
+      let n = 0
+      const ticking = () => [el({ label: `00:0${n++}` })]
+      const { result, swipeAt } = await launchThenScroll([ticking])
+      expect(result.status).toBe('passed')
+      expect(swipeAt).toBe(3000)
+    })
+
+    // An Android dump takes ~2.5 s by itself.
+    it('does not add the poll interval after a read that already took longer', async () => {
+      const slowDump = () => { vi.advanceTimersByTime(2500); return screen }
+      const { queries, swipeAt } = await launchThenScroll([slowDump])
+      expect(queries).toEqual([0, 2500])
+      expect(swipeAt).toBe(5000)
+    })
+
+    it('goes on after the timeout when no read ever succeeds, without failing', async () => {
+      const { result, swipeAt } = await launchThenScroll([() => { throw new TransientQueryError('not up yet') }])
+      expect(result.status).toBe('passed')
+      expect(swipeAt).toBe(10_000)
     })
 
     it('leaves a failing tree query to the next step to report', async () => {
