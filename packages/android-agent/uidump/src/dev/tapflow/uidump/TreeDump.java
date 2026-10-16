@@ -40,7 +40,7 @@ public final class TreeDump {
       wrapper = wrapperClass.getConstructor().newInstance();
       wrapperClass.getMethod("connect").invoke(wrapper);
     } catch (InvocationTargetException e) {
-      failed(e);
+      failed(e.getCause());
       return;
     } catch (ReflectiveOperationException e) {
       unsupported(e);
@@ -71,9 +71,16 @@ public final class TreeDump {
           .getMethod("dumpWindowToFile", AccessibilityNodeInfo.class, File.class, int.class, int.class, int.class)
           .invoke(null, root, new File(out), display.getRotation(), size.x, size.y);
     } catch (InvocationTargetException e) {
-      failed(e);
+      failed(e.getCause());
     } catch (ReflectiveOperationException e) {
       unsupported(e);
+    } catch (ClassCastException e) {
+      // A hidden method that answers with another type than this was written against: the image is the problem.
+      unsupported(e);
+    } catch (RuntimeException e) {
+      // Anything else escaping main would end the process with a stack trace and no line the agent recognises, so it
+      // would retry the jar on every read without ever deciding. Said as ERROR: this read falls back.
+      failed(e);
     } finally {
       try {
         wrapperClass.getMethod("disconnect").invoke(wrapper);
@@ -83,12 +90,12 @@ public final class TreeDump {
     }
   }
 
-  private static void failed(InvocationTargetException e) {
-    System.out.println("ERROR " + e.getCause());
+  private static void failed(Throwable cause) {
+    System.out.println("ERROR " + cause);
     System.exit(2);
   }
 
-  private static void unsupported(ReflectiveOperationException e) {
+  private static void unsupported(Exception e) {
     System.out.println(UNSUPPORTED + " " + e);
     System.exit(3);
   }
