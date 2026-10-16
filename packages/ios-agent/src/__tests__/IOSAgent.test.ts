@@ -667,7 +667,7 @@ describe('IOSAgent', () => {
 
   // The relay tags a boot `automation` when a flow runner or MCP client holds the session; the agent then starts
   // the UI-tree runner so the first selector step does not spend its cold start. A dashboard boot never does: the
-  // runner costs about 520 MB per device, and manual testing never reads the tree.
+  // runner costs about 650 MB per device, and manual testing never reads the tree.
   describe('UI-tree runner warm-up on boot', () => {
     afterEach(() => { vi.restoreAllMocks() })
 
@@ -684,6 +684,28 @@ describe('IOSAgent', () => {
 
       expect(warm).toHaveBeenCalledTimes(calls)
       if (calls) expect(warm).toHaveBeenCalledWith('dev-1')
+
+      agent.disconnect()
+      browser.close()
+    })
+ 
+    // `test-without-building` boots its destination, so a runner still starting for the device would bring it back up
+    // between our shutdown and the erase, which refuses anything but a shut-down device.
+    it('stops the device\'s runner before an erase boot shuts the device down', async () => {
+      const stopIfDevice = vi.spyOn(XCUITreeReader.prototype, 'stopIfDevice')
+      const simctl = mockSimctl(true)
+      const browser = new WebSocket(`ws://localhost:${port}`)
+      await waitForOpen(browser)
+      const agent = new IOSAgent({ intervalMs: 50 }, simctl)
+      await agent.connect(`ws://localhost:${port}`)
+      browser.send(JSON.stringify({ type: 'session:start', sessionId: agent.sessionId }))
+      await waitForType(browser, 'session:joined')
+      browser.send(JSON.stringify({ type: 'device:boot', requestId: 'rq-erase', sessionId: agent.sessionId, payload: { deviceId: 'dev-1', resetMode: 'full-erase' } }))
+      await waitForType(browser, 'device:ready')
+
+      expect(stopIfDevice).toHaveBeenCalledWith('dev-1')
+      const shutdownOrder = (simctl.shutdown as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!
+      expect(stopIfDevice.mock.invocationCallOrder[0]!).toBeLessThan(shutdownOrder)
 
       agent.disconnect()
       browser.close()

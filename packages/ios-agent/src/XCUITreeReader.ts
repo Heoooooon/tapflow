@@ -1,7 +1,8 @@
 import { spawn, execFile, type ChildProcess } from 'child_process'
 import { promisify } from 'util'
-import { readdirSync } from 'fs'
-import { join } from 'path'
+import { createHash, randomUUID } from 'crypto'
+import { readdirSync, readFileSync, writeFileSync } from 'fs'
+import { join, relative } from 'path'
 import type { UIElement } from '@tapflowio/agent-core'
 import { createLogger, PlatformError } from '@tapflowio/agent-core'
 import { parseTreeText } from './xcuiTree.js'
@@ -13,56 +14,100 @@ const RUNNER_DIR = join(import.meta.dirname, '..', 'xctest-runner')
 const PROJECT = join(RUNNER_DIR, 'TapflowTreeRunner.xcodeproj')
 const BUILD_DIR = join(RUNNER_DIR, 'build')
 const PRODUCTS_DIR = join(BUILD_DIR, 'Build', 'Products')
+const STAMP_FILE = join(BUILD_DIR, 'tapflow-runner.stamp')
 const SCHEME = 'TreeRunner'
-// The in-simulator host app the UI-test runner attaches to. Terminating it ends
-// the test session so the HTTP port is released (killing the xcodebuild wrapper
-// alone does not tear the in-simulator process down).
-const RUNNER_HOST_BUNDLE = 'dev.tapflow.treerunner.host'
-// Fixed port: xcodebuild does not propagate host env to the in-simulator test
-// runner, so a per-udid port can't be passed this way. A single resident runner
-// (guarded below) means no collision; concurrent multi-device is deferred (Q8).
-const PORT = 22087
+// The in-simulator process the UI-test session runs as. Killing xcodebuild already ends it (measured); this covers
+// an xcodebuild that dies by SIGKILL without taking it along. `dev.tapflow.treerunner.host` was named here before,
+// and is never installed: `test-without-building` installs only the runner.
+const RUNNER_BUNDLE = 'dev.tapflow.treerunner.uitests.xctrunner'
+const READY_DEADLINE_MS = 90_000
+const READY_LINE = /TAPFLOW_TREE_READY port=(\d+)/
 
 interface RunnerHandle {
   proc: ChildProcess
   udid: string
-  port: number
+  token: string
+  // Set once the runner has announced its port and answered /health with `token`. Until then the handle only
+  // marks the device as starting, so a stop can still find and kill the process.
+  port?: number
 }
+
+type ReadyRunner = RunnerHandle & { port: number }
 
 // Native-tooling boundary (xcodebuild/xcrun). Injectable so tests can mock the
 // native calls without exercising the runner lifecycle / signal handling.
 export interface RunnerNative {
-  xctestrunReady(): boolean
-  build(destination: string): Promise<void>
-  spawn(destination: string, port: number): ChildProcess
-  terminateHost(udid: string): void
+  // What the runner would be built from now: its sources, the checked-in project and the Xcode that builds them.
+  sourceStamp(): Promise<string>
+  // The stamp recorded beside the built products, or undefined when there is no usable build.
+  builtStamp(): string | undefined
+  // Builds, then records `stamp` — only on success, so a half build is never trusted.
+  build(destination: string, stamp: string): Promise<void>
+  // Starts the runner on a port of the kernel's choosing. Its stdout must stay readable: the port arrives there.
+  spawn(destination: string, token: string): ChildProcess
+  terminateRunner(udid: string): void
+}
+
+// Everything `build-for-testing` reads from this package: the runner and host sources and the checked-in project
+// (xcodegen does not run at build time, so `project.yml` alone changes nothing that is built). The toolchain is part
+// of it, so an Xcode upgrade rebuilds too.
+export function computeRunnerStamp(runnerDir: string, toolchain: string): string {
+  const hash = createHash('sha256').update(toolchain)
+  const files: string[] = []
+  const walk = (dir: string): void => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, e.name)
+      if (e.isDirectory()) walk(path)
+      else if (e.isFile()) files.push(path)
+    }
+  }
+  walk(join(runnerDir, 'TreeRunner'))
+  walk(join(runnerDir, 'TreeHost'))
+  files.push(join(runnerDir, 'TapflowTreeRunner.xcodeproj', 'project.pbxproj'))
+  for (const f of files.map((f) => relative(runnerDir, f)).sort()) {
+    hash.update(`\0${f}\0`).update(readFileSync(join(runnerDir, f)))
+  }
+  return hash.digest('hex')
 }
 
 const defaultNative: RunnerNative = {
-  xctestrunReady() {
+  async sourceStamp() {
+    const { stdout } = await execFileAsync('xcodebuild', ['-version'], { timeout: 30_000 })
+    return computeRunnerStamp(RUNNER_DIR, stdout)
+  },
+  builtStamp() {
     // test-without-building needs the .xctestrun, not just the .app — gate on it.
     try {
-      return readdirSync(PRODUCTS_DIR).some((f) => f.endsWith('.xctestrun'))
+      if (!readdirSync(PRODUCTS_DIR).some((f) => f.endsWith('.xctestrun'))) return undefined
+      return readFileSync(STAMP_FILE, 'utf8').trim()
     } catch {
-      return false
+      return undefined
     }
   },
-  async build(destination) {
+  async build(destination, stamp) {
     await execFileAsync(
       'xcodebuild',
       ['build-for-testing', '-project', PROJECT, '-scheme', SCHEME, '-destination', destination, '-derivedDataPath', BUILD_DIR, '-quiet'],
       { timeout: 300_000, maxBuffer: 64 * 1024 * 1024 },
     )
+    writeFileSync(STAMP_FILE, stamp)
   },
-  spawn(destination, port) {
+  spawn(destination, token) {
+    // No `-quiet`: it also silences the test's own output, and the READY line is how the port arrives. The
+    // `TEST_RUNNER_` prefix is what makes xcodebuild hand a variable to the runner (it strips the prefix); without
+    // it nothing arrives.
     return spawn(
       'xcodebuild',
-      ['test-without-building', '-project', PROJECT, '-scheme', SCHEME, '-destination', destination, '-derivedDataPath', BUILD_DIR, '-quiet'],
-      { env: { ...process.env, TAPFLOW_TREE_PORT: String(port) }, stdio: 'ignore', detached: true },
+      ['test-without-building', '-project', PROJECT, '-scheme', SCHEME, '-destination', destination, '-derivedDataPath', BUILD_DIR],
+      {
+        env: { ...process.env, TEST_RUNNER_TAPFLOW_TREE_PORT: '0', TEST_RUNNER_TAPFLOW_TREE_TOKEN: token },
+        stdio: ['ignore', 'pipe', 'ignore'],
+        detached: true,
+      },
     )
   },
-  terminateHost(udid) {
-    execFile('xcrun', ['simctl', 'terminate', udid, RUNNER_HOST_BUNDLE], () => { /* best-effort */ })
+  terminateRunner(udid) {
+    execFile('xcrun', ['simctl', 'terminate', udid, RUNNER_BUNDLE], () => { /* best-effort */ })
   },
 }
 
@@ -70,26 +115,29 @@ function refused(e: unknown): boolean {
   return (e as { cause?: { code?: string } }).cause?.code === 'ECONNREFUSED'
 }
 
-async function answers(port: number): Promise<boolean> {
+async function answers(port: number, token: string): Promise<boolean> {
   try {
-    return (await fetch(`http://localhost:${port}/health`, { signal: AbortSignal.timeout(1000) })).ok
+    const r = await fetch(`http://localhost:${port}/health`, { signal: AbortSignal.timeout(1000) })
+    return r.ok && (await r.text()).trim() === token
   } catch {
     return false
   }
 }
 
-// Drives the resident XCUITest tree runner: builds it once, launches it (staying
-// resident), and queries GET /tree over the simulator-shared loopback. Replaces
-// the AXUIElement path (UITreeReader), which required a Simulator.app window.
+// Drives the resident XCUITest tree runners, one per simulator: builds the runner once, launches it per device
+// (staying resident), and queries GET /tree over the simulator-shared loopback. Replaces the AXUIElement path
+// (UITreeReader), which required a Simulator.app window.
 export class XCUITreeReader {
-  private runner?: RunnerHandle
+  private readonly runners = new Map<string, RunnerHandle>()
+  private readonly starting = new Map<string, Promise<ReadyRunner>>()
   private building?: Promise<void>
-  private starting?: Promise<RunnerHandle>
-  private startingUdid?: string
-  // Bumped by stop(). A launch that was building when the device went away must not spawn afterwards:
-  // `test-without-building` boots a shut-down simulator, which would power a device back up right after
-  // someone shut it down.
-  private generation = 0
+  private stamp?: Promise<string>
+  // A launch compares the generation it began with before it spawns, because `test-without-building` boots a
+  // shut-down simulator and would power a device back up right after someone shut it down. A device's count is
+  // never deleted: a count that restarted at 0 would match a launch that began before it was cleared. `epoch` is
+  // stop()'s share, so stopping everything also cancels a device that is only building and holds no handle yet.
+  private readonly generations = new Map<string, number>()
+  private epoch = 0
 
   constructor(private readonly native: RunnerNative = defaultNative) {}
 
@@ -98,17 +146,30 @@ export class XCUITreeReader {
     return `platform=iOS Simulator,id=${udid}`
   }
 
+  private generation(udid: string): string {
+    return `${this.epoch}/${this.generations.get(udid) ?? 0}`
+  }
+
+  private bumpGeneration(udid: string): void {
+    this.generations.set(udid, (this.generations.get(udid) ?? 0) + 1)
+  }
+
   private async ensureBuilt(udid: string): Promise<void> {
-    if (this.native.xctestrunReady()) return
+    // Once per process: a stamp that changed while runners serve (a source edited under a running agent) must not
+    // rebuild the products they are executing.
+    const stamping = (this.stamp ??= this.native.sourceStamp())
     if (this.building) return this.building
     this.building = (async () => {
-      logger.info('building tree runner (first run — cached afterwards)...')
-      await this.native.build(this.destination(udid))
+      const stamp = await stamping
+      if (this.native.builtStamp() === stamp) return
+      logger.info('building tree runner (first run, or its sources or Xcode changed — cached afterwards)...')
+      await this.native.build(this.destination(udid), stamp)
       logger.info('tree runner built')
     })()
     try {
       await this.building
     } catch (e) {
+      this.stamp = undefined
       throw new PlatformError(
         `failed to build the UI-tree runner — ensure Xcode and an iOS simulator runtime are installed (xcode-select -p): ${(e as Error).message.slice(0, 300)}`,
       )
@@ -123,27 +184,28 @@ export class XCUITreeReader {
     return !!h && h.proc.exitCode === null && h.proc.signalCode === null && !h.proc.killed
   }
 
-  private async ensureRunner(udid: string): Promise<RunnerHandle> {
-    // Serialize concurrent callers so we never double-spawn or hand back an
-    // un-ready runner (a second caller must await waitReady, not just the object).
-    // A loop, not one wait: two callers that both waited out another device's
-    // launch would otherwise both start their own, on the same port.
+  private ready(h: RunnerHandle | undefined): h is ReadyRunner {
+    return this.runnerAlive(h) && h.port !== undefined
+  }
+
+  private async ensureRunner(udid: string): Promise<ReadyRunner> {
+    // Serialize concurrent callers for one device so we never double-spawn or hand back an un-ready runner.
+    // A loop, not one wait: two callers that both waited out a failed launch would otherwise both start their own.
+    // Other devices are never touched.
     for (;;) {
-      if (this.runnerAlive(this.runner) && this.runner.udid === udid) return this.runner
-      if (!this.starting) break
-      const h = await this.starting.catch(() => undefined)
-      if (h && this.runnerAlive(h) && h.udid === udid) return h
+      const held = this.runners.get(udid)
+      if (this.ready(held)) return held
+      const pending = this.starting.get(udid)
+      if (!pending) break
+      const h = await pending.catch(() => undefined)
+      if (h && this.ready(h) && this.runners.get(udid) === h) return h
     }
     const starting = this.launchRunner(udid)
-    this.starting = starting
-    this.startingUdid = udid
+    this.starting.set(udid, starting)
     try {
       return await starting
     } finally {
-      if (this.starting === starting) {
-        this.starting = undefined
-        this.startingUdid = undefined
-      }
+      if (this.starting.get(udid) === starting) this.starting.delete(udid)
     }
   }
 
@@ -151,71 +213,112 @@ export class XCUITreeReader {
    * Start the runner before anything asks for a tree, for a device an automation client just booted. A cold
    * start is about 3 s on a running simulator and 8–9 s right after a boot (iOS 26.5), and on the first query
    * that time is spent inside the step's selector timeout (10 s by default). Manual sessions are not warmed:
-   * they never read the tree, and the runner costs about 520 MB per device.
+   * they never read the tree, and a runner costs about 650 MB per device.
    *
-   * Skipped while a runner is alive or starting, because there is one runner for every device: warming this
-   * device must not take it from another that is reading. A read during the warm-up waits on the same launch.
+   * Each device has its own runner, so warming one never touches another's. A read during the warm-up waits on
+   * the same launch.
    */
   warm(udid: string): void {
-    if (this.starting) return
-    const held = this.runnerAlive(this.runner) ? this.runner : undefined
-    if (held && held.udid !== udid) return
-    let generation = this.generation
+    if (this.starting.has(udid)) return
+    const held = this.runners.get(udid)
+    let generation = this.generation(udid)
     // A runner already serving this device may have died with a simulator shut down outside tapflow, while its
-    // xcodebuild lingers for up to a minute and still looks alive: ask it before keeping it. Stopping it here is
+    // xcodebuild lingers for up to a minute and still looks alive: ask it before keeping it. Dropping it here is
     // this warm-up's own doing, so it moves the generation this warm-up compares against.
-    const check = held
-      ? answers(held.port).then((ok) => {
-        if (!ok && this.runner === held) {
-          this.stop()
-          generation = this.generation
+    const check = this.ready(held)
+      ? answers(held.port, held.token).then((ok) => {
+        if (!ok) {
+          this.dropRunner(udid, held)
+          generation = this.generation(udid)
         }
       })
       : Promise.resolve()
     check.then(() => {
-      // The probe takes up to a second, and another device's read may have started the runner meanwhile (its launch
-      // stops what was there, bumping the generation). Going on would stop that runner while it serves.
-      if (this.generation !== generation) return
+      // The device may have been shut down while the probe was out.
+      if (this.generation(udid) !== generation) return
       return this.ensureRunner(udid)
     }).catch((e: Error) => {
       // Stopped on purpose (the device was shut down mid-start) is not a fault worth sending anyone to Xcode for.
-      if (this.generation !== generation) logger.debug(`tree runner warm-up for ${udid} cancelled: ${e.message}`)
+      if (this.generation(udid) !== generation) logger.debug(`tree runner warm-up for ${udid} cancelled: ${e.message}`)
       else logger.warn(`tree runner warm-up for ${udid} failed; the first query will try again: ${e.message}`)
     })
   }
 
-  private async launchRunner(udid: string): Promise<RunnerHandle> {
-    this.stop() // tear down any stale/other-udid runner first
-    const generation = this.generation
+  private async launchRunner(udid: string): Promise<ReadyRunner> {
+    const stale = this.runners.get(udid)
+    if (stale) this.dropRunner(udid, stale)
+    const generation = this.generation(udid)
     await this.ensureBuilt(udid)
-    if (this.generation !== generation) throw new PlatformError('tree runner start cancelled — the runner was stopped while it was being built')
-    const proc = this.native.spawn(this.destination(udid), PORT)
+    if (this.generation(udid) !== generation) throw new PlatformError('tree runner start cancelled — the runner was stopped while it was being built')
+    // No await between the check above and registering the handle, so a stop always finds what it must kill.
+    const token = randomUUID()
+    const proc = this.native.spawn(this.destination(udid), token)
     proc.on('error', (e) => logger.error('tree runner process error:', e.message))
-    const handle: RunnerHandle = { proc, udid, port: PORT }
-    this.runner = handle
-    await this.waitReady(handle)
-    return handle
+    const handle: RunnerHandle = { proc, udid, token }
+    this.runners.set(udid, handle)
+    const port = await this.waitReady(handle)
+    handle.port = port
+    return handle as ReadyRunner
   }
 
-  private async waitReady(handle: RunnerHandle): Promise<void> {
-    // A clock, not an iteration count: a refused connection fails at once, so the count would set the cap
-    // through the sleep below.
-    const deadline = Date.now() + 90_000
-    while (Date.now() < deadline) {
-      if (!this.runnerAlive(handle)) {
-        if (this.runner === handle) this.runner = undefined
-        throw new PlatformError('tree runner exited before becoming ready — check Xcode/simulator state')
+  // The runner announces its port on stdout once it is listening. Resolves with it, or rejects when the process
+  // exits first or the deadline passes. The listener stays for the life of the process: an undrained pipe would
+  // block the runner once its buffer filled.
+  private readPort(handle: RunnerHandle, deadline: number): Promise<number> {
+    return new Promise((resolve, reject) => {
+      let pending = ''
+      let settled = false
+      const settle = (err: Error | undefined, port?: number): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        handle.proc.off('exit', onExit)
+        if (err) reject(err)
+        else resolve(port as number)
       }
-      try {
-        const r = await fetch(`http://localhost:${handle.port}/health`, { signal: AbortSignal.timeout(1000) })
-        if (r.ok) return
-      } catch {
-        /* not listening yet */
+      const onExit = (): void => settle(new PlatformError('tree runner exited before becoming ready — check Xcode/simulator state'))
+      const timer = setTimeout(() => settle(new PlatformError('tree runner did not become ready in time')), Math.max(0, deadline - Date.now()))
+      handle.proc.stdout?.on('data', (chunk: Buffer | string) => {
+        if (settled) return
+        // A chunk boundary can split the line, so keep the unfinished tail.
+        pending += chunk.toString()
+        const m = READY_LINE.exec(pending)
+        if (m) settle(undefined, Number(m[1]))
+        else pending = pending.slice(pending.lastIndexOf('\n') + 1)
+      })
+      handle.proc.once('exit', onExit)
+      if (!this.runnerAlive(handle)) onExit()
+    })
+  }
+
+  private async waitReady(handle: RunnerHandle): Promise<number> {
+    const deadline = Date.now() + READY_DEADLINE_MS
+    try {
+      const port = await this.readPort(handle, deadline)
+      // A runner built before the port was chosen this way prints the port it was given, which is now 0.
+      if (port === 0) throw new PlatformError('tree runner is out of date (announced port 0) — remove xctest-runner/build to rebuild it')
+      // A clock, not an iteration count: a refused connection fails at once, so the count would set the cap
+      // through the sleep below.
+      while (Date.now() < deadline) {
+        if (!this.runnerAlive(handle)) throw new PlatformError('tree runner exited before becoming ready — check Xcode/simulator state')
+        try {
+          const r = await fetch(`http://localhost:${port}/health`, { signal: AbortSignal.timeout(1000) })
+          if (r.ok) {
+            // Anything else answering is not the runner we started, and its tree would be another simulator's.
+            if ((await r.text()).trim() === handle.token) return port
+            throw new PlatformError(`port ${port} is answered by another tree runner — not reading from it`)
+          }
+        } catch (e) {
+          if (e instanceof PlatformError) throw e
+          /* not listening yet */
+        }
+        await new Promise((r) => setTimeout(r, 250))
       }
-      await new Promise((r) => setTimeout(r, 250))
+      throw new PlatformError('tree runner did not become ready in time')
+    } catch (e) {
+      this.dropRunner(handle.udid, handle)
+      throw e
     }
-    this.stop()
-    throw new PlatformError('tree runner did not become ready in time')
   }
 
   async read(udid: string, bundleId: string): Promise<UIElement[]> {
@@ -231,7 +334,7 @@ export class XCUITreeReader {
       // Nothing listening: the runner died (with its simulator, shut down outside tapflow) while xcodebuild lingers,
       // so `runnerAlive` still says yes. Drop it, or every read until xcodebuild exits fails the same way. A timeout
       // is not this: a runner on a screen that never goes idle is slow, not gone.
-      if (refused(e) && this.runner === handle) this.stop()
+      if (refused(e)) this.dropRunner(udid, handle)
       throw new PlatformError(`UI tree query failed: ${(e as Error).message}`)
     }
     // Guard against a garbage / wrong-bundleId body silently parsing to an empty
@@ -242,20 +345,29 @@ export class XCUITreeReader {
     return parseTreeText(text)
   }
 
-  // Stop the resident runner regardless of which device it serves.
-  stop(): void {
-    this.generation++
-    const handle = this.runner
-    if (!handle) return
-    this.runner = undefined
+  // Drop one device's runner, if `handle` is still the one it holds. Every fault path goes through here rather than
+  // stop(): one device's dead runner must not take the others down with it.
+  private dropRunner(udid: string, handle: RunnerHandle): void {
+    if (this.runners.get(udid) !== handle) return
+    this.runners.delete(udid)
+    this.bumpGeneration(udid)
     this.killHandle(handle)
   }
 
-  // Stop only if the runner currently serves this device — so shutting down one
-  // booted device does not kill another device's runner.
+  // Stop every device's runner, including launches still building (agent shutdown).
+  stop(): void {
+    this.epoch++
+    for (const handle of this.runners.values()) this.killHandle(handle)
+    this.runners.clear()
+  }
+
+  // Stop this device's runner, or the launch starting one for it — on device shutdown and before an erase.
   stopIfDevice(udid: string): void {
-    // Or is starting one for it: until the spawn, `runner` does not name the device yet.
-    if (this.runner?.udid === udid || this.startingUdid === udid) this.stop()
+    this.bumpGeneration(udid)
+    const handle = this.runners.get(udid)
+    if (!handle) return
+    this.runners.delete(udid)
+    this.killHandle(handle)
   }
 
   private killHandle(handle: RunnerHandle): void {
@@ -268,9 +380,9 @@ export class XCUITreeReader {
     } catch {
       /* already gone */
     }
-    // The in-simulator test host is not in that group — terminate it so the HTTP
-    // port is released instead of lingering.
-    this.native.terminateHost(udid)
+    // The in-simulator runner is not in that group; ending xcodebuild normally ends it, and this covers the case
+    // where it does not.
+    this.native.terminateRunner(udid)
     // SIGKILL fallback if SIGTERM did not take.
     const timer = setTimeout(() => {
       try {

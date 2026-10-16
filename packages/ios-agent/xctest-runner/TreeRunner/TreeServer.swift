@@ -7,13 +7,15 @@ import XCTest
 // (no Simulator.app window required — the tapflow headless path).
 //
 // Routes:
-//   GET /health                     → "ok" (readiness probe)
+//   GET /health                     → the token the host passed, or "ok" without one (readiness probe)
 //   GET /tree?bundleId=<id>         → the app's XCUIApplication.debugDescription (text)
 final class TreeServer {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "dev.tapflow.treeserver")
+    private let token: String
 
-    init(port: UInt16) throws {
+    init(port: UInt16, token: String) throws {
+        self.token = token
         let params = NWParameters.tcp
         params.allowLocalEndpointReuse = true
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
@@ -36,10 +38,20 @@ final class TreeServer {
         // Surface a bind failure (e.g. port held by a stale runner) immediately by
         // exiting — otherwise the process stays alive looking "ready" and the host
         // only fails after the full 90s /health poll.
-        listener.stateUpdateHandler = { state in
-            if case .failed(let error) = state {
+        listener.stateUpdateHandler = { [weak self] state in
+            switch state {
+            case .ready:
+                // Announced only once bound, with the port the kernel gave (the host passes 0), because the host
+                // talks to nothing but the port this line names. Printed before the bind, as it once was, a runner
+                // that lost its port still announced it, and the host then read another simulator's tree from
+                // whoever held it.
+                print("TAPFLOW_TREE_READY port=\(self?.listener.port?.rawValue ?? 0)")
+                fflush(stdout)
+            case .failed(let error):
                 FileHandle.standardError.write(Data("tree server failed to bind: \(error)\n".utf8))
                 exit(1)
+            default:
+                break
             }
         }
         listener.start(queue: queue)
@@ -66,14 +78,15 @@ final class TreeServer {
         let path = parts.count >= 2 ? String(parts[1]) : "/"
         // XCUITest snapshot access must run on the main thread.
         DispatchQueue.main.async {
-            let (status, body) = Self.route(path)
+            let (status, body) = Self.route(path, token: self.token)
             self.respond(conn, status: status, body: body)
         }
     }
 
-    private static func route(_ path: String) -> (String, String) {
+    private static func route(_ path: String, token: String) -> (String, String) {
         if path.hasPrefix("/health") {
-            return ("200 OK", "ok")
+            // The token tells the host this is the runner it started, not one another agent left on the port.
+            return ("200 OK", token.isEmpty ? "ok" : token)
         }
         if path.hasPrefix("/tree") {
             guard let bundleId = query(path, "bundleId"), !bundleId.isEmpty else {
