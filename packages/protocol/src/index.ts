@@ -1165,7 +1165,7 @@ export interface AppInstallDone {
 }
 
 /** The app was launched. Not that its screen is up: on iOS this follows the process start, on Android the first frame
- *  (`am start -W`). What a client may infer, and how flow-runner's `launchApp` waits, is in agent-core's
+ *  (`am start -W`, bounded at 10 s) — which can still be a splash. What a client may infer, and how flow-runner's `launchApp` waits, is in agent-core's
  *  `DeviceAgent.launchApp`. */
 export interface AppLaunchDone {
   type: 'app:launch-done'

@@ -27,9 +27,10 @@ export class StorageFullError extends ValidationError {
   }
 }
 
-// How long `am start -W` may wait for the launched app's first frame. Under MCP's 15 s launch deadline with room for
-// the resolve call and a monkey fallback.
+// How long `am start -W` may wait for the launched app's first frame, and the resolve call before it: together under
+// MCP's 15 s launch deadline, with room for a monkey fallback.
 const AM_START_WAIT_SEC = 10
+const RESOLVE_WAIT_SEC = 3
 
 export class AdbWrapper {
   // avdId ("avd:<name>") → ADB serial ("emulator-5554")
@@ -297,8 +298,9 @@ export class AdbWrapper {
   // hands the line to the device shell unquoted. Monkey handles every one of those.
   private async launcherComponent(serial: string, packageName: string): Promise<string | undefined> {
     try {
+      // Bounded like the launch below, so a busy package manager cannot spend MCP's 15 s launch deadline here.
       const out = await this.runner.exec(
-        '-s', serial, 'shell', 'cmd', 'package', 'resolve-activity', '--brief',
+        '-s', serial, 'shell', 'timeout', String(RESOLVE_WAIT_SEC), 'cmd', 'package', 'resolve-activity', '--brief',
         '-c', 'android.intent.category.LAUNCHER', packageName,
       )
       const last = out.split('\n').map((l) => l.trim()).filter(Boolean).pop()
@@ -322,6 +324,9 @@ export class AdbWrapper {
       out = await this.runner.exec(
         '-s', serial, 'shell', 'timeout', String(AM_START_WAIT_SEC), 'am', 'start', '-W',
         '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.LAUNCHER', '-f', '0x10200000', '-n', component,
+        // Measured on API 36: errors go to stdout and the exit status is 0. Folded in on the device for an image that
+        // writes them to stderr, which this runner does not return.
+        '2>&1',
       )
     } catch (e) {
       out = (e as { stdout?: string }).stdout ?? ''

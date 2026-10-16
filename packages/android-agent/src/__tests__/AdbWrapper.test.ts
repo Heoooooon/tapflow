@@ -250,8 +250,9 @@ describe('AdbWrapper', () => {
       const runner = launcher({ resolve: RESOLVED, start: STARTED })
       await new AdbWrapper(runner).launchApp('emulator-5554', PKG)
       expect(ran(runner, 'am')).toEqual([[
-        '-s', 'emulator-5554', 'shell', 'timeout', '10', 'am', 'start', '-W', ...START_FIELDS, '-n', 'com.example.app/.MainActivity',
+        '-s', 'emulator-5554', 'shell', 'timeout', '10', 'am', 'start', '-W', ...START_FIELDS, '-n', 'com.example.app/.MainActivity', '2>&1',
       ]])
+      expect(ran(runner, 'resolve-activity')[0]!.slice(0, 5)).toEqual(['-s', 'emulator-5554', 'shell', 'timeout', '3'])
       expect(ran(runner, 'monkey')).toHaveLength(0)
     })
 

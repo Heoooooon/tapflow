@@ -209,6 +209,31 @@ describe('runFlow', () => {
       expect(swipeAt).toBe(5000)
     })
 
+    // A slow emulator: each dump takes longer than the cap's margin. The confirming read ends past the cap and still
+    // counts, rather than being cut off there every time.
+    it('lets a read that ends past the cap confirm the screen', async () => {
+      const slowerDump = (signal?: AbortSignal) => {
+        vi.advanceTimersByTime(3500)
+        if (signal?.aborted) throw new TransientQueryError('aborted')
+        return screen
+      }
+      vi.useFakeTimers()
+      try {
+        const t0 = Date.now()
+        let swipeAt = -1
+        const driver = fakeDriver([])
+        driver.queryUITree = vi.fn(async (signal?: AbortSignal) => slowerDump(signal))
+        driver.swipe = vi.fn(async () => { swipeAt = Date.now() - t0 })
+        const run = runFlow(flowOf('steps:\n  - launchApp\n  - scroll: down\n'), driver, SLOW)
+        await vi.advanceTimersByTimeAsync(20_000)
+        await run
+        expect(driver.queryUITree).toHaveBeenCalledTimes(2)
+        expect(swipeAt).toBe(7000)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('goes on after the timeout when no read ever succeeds, without failing', async () => {
       const { result, swipeAt } = await launchThenScroll([() => { throw new TransientQueryError('not up yet') }])
       expect(result.status).toBe('passed')

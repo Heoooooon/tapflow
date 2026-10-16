@@ -328,7 +328,8 @@ async function waitNotVisible(driver: FlowDriver, sel: Selector, timeoutMs: numb
  * before then would read as settled.
  *
  * **Best effort: it never fails the step.** A screen whose labels keep changing (a carousel, a running clock) never
- * holds still, so the wait ends `SETTLE_CAP_MS` after the first successful read. A query that fails is the next
+ * holds still, so no new read starts once `SETTLE_CAP_MS` has passed since the first successful read; the one in
+ * flight still counts. A query that fails is the next
  * step's to report, as it was before. A splash that holds still for longer than `SETTLE_MS` still reads as ready.
  */
 async function waitForScreen(driver: FlowDriver, timeoutMs: number, pollIntervalMs: number): Promise<void> {
@@ -341,7 +342,10 @@ async function waitForScreen(driver: FlowDriver, timeoutMs: number, pollInterval
   try {
     for (;;) {
       const started = Date.now()
-      const q = await queryOrRetry(driver, settleBy)
+      // Bounded by the step's deadline, not the cap: the cap only decides whether to start another read. Cutting a
+      // read at the cap would abort every confirming read on a device whose dump takes close to it (~2.5 s on an
+      // emulator), and a screen that holds still would always wait the full cap there.
+      const q = await queryOrRetry(driver, deadline)
       const now = Date.now()
       // A failed read neither confirms nor resets: on iOS it means "not up yet", and on Android one costs a dump.
       if ('tree' in q) {
