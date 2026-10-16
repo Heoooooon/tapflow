@@ -50,6 +50,8 @@ describe('run_flow — install before replay', () => {
   it('installs buildId before running the flow (default)', async () => {
     const calls: string[] = []
     const client = fakeClient(calls)
+    // `launchApp` ends once the app shows a screen, so the fake has one.
+    vi.mocked(client.queryUITree).mockResolvedValue([{ role: 'button', label: 'OK', frame: { x: 0, y: 0, width: 1, height: 1 }, enabled: true }])
     const res = await runFlowHandler(client)({ sessionId: 's1', flow: 'steps:\n  - launchApp\n', buildId: 5 })
     expect(res.isError).toBeFalsy()
     expect(client.installApp).toHaveBeenCalledWith('s1', 5)
@@ -59,6 +61,8 @@ describe('run_flow — install before replay', () => {
   it('install:false skips the install but still launches', async () => {
     const calls: string[] = []
     const client = fakeClient(calls)
+    // `launchApp` ends once the app shows a screen, so the fake has one.
+    vi.mocked(client.queryUITree).mockResolvedValue([{ role: 'button', label: 'OK', frame: { x: 0, y: 0, width: 1, height: 1 }, enabled: true }])
     await runFlowHandler(client)({ sessionId: 's1', flow: 'steps:\n  - launchApp\n', buildId: 5, install: false })
     expect(client.installApp).not.toHaveBeenCalled()
     expect(calls).toEqual(['launch'])

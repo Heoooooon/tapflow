@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync, readdirSync, statSync } from 'fs'
+import { readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
+import { listDir, readListed, statListed } from './sourceFiles.mjs'
 
 // L2 of the wire-contract work (`.work/WIRE-CONTRACT-PLAN.md`). Wire payload types were declared in
 // three to five packages each and had drifted in both directions: protocol lacked
@@ -96,10 +97,14 @@ function workspaceRoots() {
 }
 
 function walk(dir, out = []) {
-  for (const entry of readdirSync(dir)) {
+  // `listDir`/`statListed`/`readListed` (below): this walk includes `__tests__`, where `testsReadSource` plants
+  // a probe for a moment.
+  for (const entry of listDir(dir)) {
     if (entry === 'node_modules' || entry === 'dist' || entry.startsWith('.')) continue
     const p = join(dir, entry)
-    if (statSync(p).isDirectory()) walk(p, out)
+    const st = statListed(p)
+    if (!st) continue
+    if (st.isDirectory()) walk(p, out)
     else if (/\.tsx?$/.test(entry)) out.push(p)
   }
   return out
@@ -201,7 +206,8 @@ describe('wire payload types are declared once, in @tapflowio/protocol', () => {
       }
       scanned.push(pkg)
       for (const file of files) {
-        const src = readFileSync(file, 'utf8')
+        const src = readListed(file)
+        if (src === null) continue
         const decls = interfaces(src)
         for (const name of decls.keys()) {
           const k = key(resolved(decls, name))

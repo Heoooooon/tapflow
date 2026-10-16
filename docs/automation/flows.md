@@ -50,7 +50,7 @@ The vocabulary is deliberately small. These ten cover most scenarios.
 | Step | Form | Behavior |
 |------|------|----------|
 | `clearState` | keyword or `clearState: <bundleId>` | Resets the app data. The keyword form uses the top-level `appId`. |
-| `launchApp` | keyword | Launches the build under test. |
+| `launchApp` | keyword | Launches the build under test and waits, up to the default per-selector wait, until the app shows a screen. An app whose screen has no UI tree elements, such as a game, moves on to the next step when that time is up. |
 | `tapOn` | selector | Taps the center of the matched element. |
 | `inputText` | string | Types text into the focused input field. |
 | `pressKey` | key name | Presses a keyboard key (`Enter`, `Backspace`, `Escape`, …). |
@@ -87,7 +87,7 @@ A bare-string selector resolves in the order **exact identifier → exact label 
 
 If a `tapOn` selector matches more than one element, it fails immediately and lists the candidates. It never picks the first one implicitly, so an ambiguous selector fails visibly instead of quietly tapping the wrong place. `assertVisible` checks presence only, so it passes when at least one element matches.
 
-When a `tapOn` fails because its selector matched nothing or more than one element, the runner prints up to three lines to try instead, taken from the screen at the moment it failed: `try: tapOn: "Sign in"`. Each one is a selector checked to tap exactly that one element on that screen, and it is kept in the [run record](#run-records) too. An input field is suggested by its `id`, never its label, so what was typed into it is not shown. A failed `assertVisible` gets no suggestions: the expected text being missing can mean the app changed, and swapping in similar text would hide the regression.
+When a `tapOn` fails because its selector matched nothing or more than one element, the runner prints up to three lines to try instead, taken from the screen at the moment it failed: `try: tapOn: "Sign in"`. Each one is a selector checked to tap exactly that one element on that screen, and it is kept in the [run record](#run-records) too. An input field is suggested by its `id`, never its label, so what was typed into it is not shown. An image is suggested only when its name matches the selector's, ignoring case, spacing and punctuation, because an image's name is usually an asset name rather than text on the screen. A failed `assertVisible` gets no suggestions: the expected text being missing can mean the app changed, and swapping in similar text would hide the regression.
 
 To resolve an ambiguous match, add a disambiguator to the object form:
 
@@ -101,6 +101,8 @@ The object form needs at least one of `id`, `label`, or `role`; `role`/`index` r
 ### Resetting state
 
 `clearState` wipes the app data so every run starts from the same state. It uses `pm clear` on Android and empties the app data container on iOS. The installed binary survives either way, so you can follow `clearState` with `launchApp`.
+
+If the app is already running, `launchApp` does not restart it: it brings the app forward on whatever screen it was last on. A flow can then start from a screen an earlier run or a manual test left behind, so a flow that must start from the app's first screen puts `clearState` before `launchApp`. `clearState` stops the app before wiping its data.
 
 ```yaml
 # uses the top-level appId

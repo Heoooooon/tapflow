@@ -123,6 +123,82 @@ describe('runFlow', () => {
     expect(result.steps[0]).not.toHaveProperty('suggestions')
   })
 
+  describe('launchApp waits for the app to show a screen', () => {
+    // Seen on iOS: a scroll sent right after launch was acknowledged and dropped by the app, 5 of 5.
+    it('sends the next coordinate step only once the tree has something in it', async () => {
+      const driver = fakeDriver([[], [], [el({ label: 'Home' })]])
+      const order: string[] = []
+      driver.queryUITree = vi.fn(async () => {
+        const t = [[], [], [el({ label: 'Home' })]][Math.min(order.filter((o) => o === 'tree').length, 2)]!
+        order.push('tree')
+        return t
+      })
+      driver.swipe = vi.fn(async () => { order.push('swipe') })
+      const result = await runFlow(flowOf('steps:\n  - launchApp\n  - scroll: down\n'), driver, OPTS)
+      expect(result.status).toBe('passed')
+      expect(order).toEqual(['tree', 'tree', 'tree', 'swipe'])
+    })
+
+    // A game, canvas or WebView-only screen has nothing in the tree and is up all the same.
+    it('goes on after the timeout when the tree stays empty, without failing', async () => {
+      const driver = fakeDriver([[]])
+      const result = await runFlow(flowOf('steps:\n  - launchApp\n  - scroll: down\n'), driver, OPTS)
+      expect(result.status).toBe('passed')
+      expect(driver.calls).toEqual([['launchApp'], ['swipe', [0.5, 0.7], [0.5, 0.3], 300]])
+    })
+
+    it('leaves a failing tree query to the next step to report', async () => {
+      const driver = fakeDriver([])
+      driver.queryUITree = vi.fn(async () => { throw new Error('Session not found') })
+      const result = await runFlow(flowOf('steps:\n  - launchApp\n'), driver, OPTS)
+      expect(result.status).toBe('passed')
+    })
+  })
+
+  describe('a query cut off at the deadline', () => {
+    // The runner aborts its own in-flight query when the step's time is up. That names nothing that failed.
+    const hangingAfter = (tree: UIElement[]) => {
+      let calls = 0
+      return vi.fn(async (signal?: AbortSignal) => {
+        if (calls++ === 0) return tree
+        return new Promise<UIElement[]>((_, reject) => signal?.addEventListener('abort', () =>
+          reject(new TransientQueryError('ui-tree query failed: The operation was aborted due to timeout'))))
+      })
+    }
+
+    it('is left out of a selector miss on a screen that was read', async () => {
+      const driver = fakeDriver([])
+      driver.queryUITree = hangingAfter([el({ label: 'Other' })])
+      const result = await runFlow(flowOf('steps:\n  - tapOn: "Sign in"\n'), driver, { pollIntervalMs: 1, defaultTimeoutMs: 50 })
+      expect(result.failureKind).toBe('product')
+      expect(result.failureMessage).not.toMatch(/last query error/)
+    })
+
+    it('stays when no screen was ever read — then it is the finding', async () => {
+      const driver = fakeDriver([])
+      driver.queryUITree = vi.fn((signal?: AbortSignal) => new Promise<UIElement[]>((_, reject) => signal?.addEventListener('abort', () =>
+        reject(new TransientQueryError('ui-tree query failed: The operation was aborted due to timeout')))))
+      const result = await runFlow(flowOf('steps:\n  - tapOn: "Sign in"\n'), driver, { pollIntervalMs: 1, defaultTimeoutMs: 50 })
+      expect(result.failureKind).toBe('environment')
+      expect(result.failureMessage).toMatch(/aborted due to timeout/)
+    })
+
+    it('does not hide a real error seen before it', async () => {
+      let calls = 0
+      const driver = fakeDriver([])
+      driver.queryUITree = vi.fn(async (signal?: AbortSignal) => {
+        const n = calls++
+        if (n === 0) return [el({ label: 'Other' })]
+        if (n === 1) throw new TransientQueryError('agent busy')
+        return new Promise<UIElement[]>((_, reject) => signal?.addEventListener('abort', () =>
+          reject(new TransientQueryError('ui-tree query failed: The operation was aborted due to timeout'))))
+      })
+      const result = await runFlow(flowOf('steps:\n  - tapOn: "Sign in"\n'), driver, { pollIntervalMs: 1, defaultTimeoutMs: 50 })
+      expect(result.failureMessage).not.toMatch(/aborted/)
+      expect(result.failureMessage).toMatch(/last query error: agent busy/)
+    })
+  })
+
   // A2: the name watchers see drops what a step types, the URL it opens and a key that types a character.
   it('names each step for watchers without what it types', async () => {
     const marks: Record<string, unknown>[] = []

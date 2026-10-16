@@ -1,4 +1,4 @@
-import { readdirSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 // Shared by every static check that asks "which files are in this part of the tree".
@@ -58,6 +58,45 @@ export const SKIP_PATHS_SOURCE = {
 }
 
 /**
+ * **A file a walk listed can be gone by the time it is read**, and that is not a finding. Tests in this suite and
+ * in the packages plant a file inside the tree for a moment — `testsReadSource` writes a probe test into
+ * `packages/ios-agent/src/__tests__` and `packages/mcp-server/src/__tests__`, `checksWalkDisk` makes temp trees
+ * under `scripts/__tests__` — and vitest runs files in parallel, so a walker that lists one and then reads it
+ * died on ENOENT about nothing. Measured: `protocolPayloadTypes` and `agentReadableDocs` each failed this way
+ * (2 of 12 full runs under CPU load). Skipping by path is what this file did for `packages/relay/public`, and
+ * it holds only for the paths someone has already been bitten by; a removed file is not part of the tree by
+ * definition, so these skip it wherever it is. Any other error still throws.
+ */
+export function listDir(dir, options) {
+  try {
+    return readdirSync(dir, options)
+  } catch (e) {
+    if (e.code === 'ENOENT') return []
+    throw e
+  }
+}
+
+/** `statSync`, or `null` for an entry removed since its directory was listed. */
+export function statListed(path) {
+  try {
+    return statSync(path)
+  } catch (e) {
+    if (e.code === 'ENOENT') return null
+    throw e
+  }
+}
+
+/** The text of a listed file, or `null` when it was removed since the walk listed it. */
+export function readListed(path) {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch (e) {
+    if (e.code === 'ENOENT') return null
+    throw e
+  }
+}
+
+/**
  * Every `.ts`/`.tsx` source file under `dir`, as **repo-root-relative** paths — the same shape
  * `git ls-files` produced, so call sites keep their existing filters and comparisons.
  *
@@ -73,7 +112,7 @@ export const SKIP_PATHS_SOURCE = {
  */
 export function sources(dir, out = [], skipPaths = SKIP_PATHS) {
   const abs = dir.startsWith(repoRoot) ? dir : join(repoRoot, dir)
-  for (const e of readdirSync(abs, { withFileTypes: true })) {
+  for (const e of listDir(abs, { withFileTypes: true })) {
     if (e.isDirectory()) {
       const child = join(abs, e.name)
       if (!SKIP_DIRS.has(e.name) && !skipPaths.has(child)) sources(child, out, skipPaths)

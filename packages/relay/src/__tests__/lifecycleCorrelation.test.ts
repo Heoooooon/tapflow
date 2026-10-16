@@ -120,6 +120,40 @@ describe('lifecycle correlation (device:boot / device:shutdown)', () => {
     agent.close(); browser.close()
   })
 
+  // The iOS agent warms its UI-tree runner on a boot tagged `automation`. A dashboard boot must never be: the
+  // runner costs about 520 MB per device and manual testing never reads the tree.
+  it.each([
+    ['flow-runner', true],
+    ['mcp', true],
+    ['dashboard', false],
+    [undefined, false],
+  ] as const)('tags a boot by a %s holder automation=%s', async (clientKind, expected) => {
+    const { agent, sessionId } = await registerAgent()
+    const holder = new WebSocket(`ws://localhost:${port}`)
+    await waitForOpen(holder)
+    holder.send(JSON.stringify({ type: 'session:start', sessionId, ...(clientKind ? { clientKind } : {}) }))
+    await waitForType(holder, 'session:joined')
+
+    const forwarded = waitForType<DeviceBoot>(agent, 'device:boot')
+    holder.send(JSON.stringify({ type: 'device:boot', sessionId, requestId: 'rq-kind', payload: { deviceId: 'devA' } }))
+
+    expect((await forwarded).payload).toMatchObject({ automation: expected })
+
+    agent.close(); holder.close()
+  })
+
+  it('overwrites an automation flag a browser sent itself', async () => {
+    const { agent, sessionId } = await registerAgent()
+    const browser = await joinAs(sessionId)
+
+    const forwarded = waitForType<DeviceBoot>(agent, 'device:boot')
+    browser.send(JSON.stringify({ type: 'device:boot', sessionId, requestId: 'rq-forged', payload: { deviceId: 'devA', automation: true } }))
+
+    expect((await forwarded).payload).toMatchObject({ automation: false })
+
+    agent.close(); browser.close()
+  })
+
   it('carries the correlator through on a shutdown a browser asked for', async () => {
     const { agent, sessionId } = await registerAgent()
     const browser = await joinAs(sessionId)
