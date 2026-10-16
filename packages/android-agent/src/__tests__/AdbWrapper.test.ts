@@ -634,34 +634,96 @@ describe('AdbWrapper', () => {
 
   describe('dumpUiHierarchy', () => {
     const XML = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>\n<hierarchy rotation="0"><node bounds="[0,0][1080,2400]" /></hierarchy>`
+    // Answers each adb call by what it runs: the push, the tree dump jar, or uiautomator dump.
+    const dumper = (replies: { push?: string | Error; tree?: string | Error; stock?: string }): AdbRunner => ({
+      exec: vi.fn(async (...args: string[]) => {
+        const reply = args.includes('push') ? replies.push ?? ''
+          : args.includes('app_process') ? replies.tree ?? ''
+            : args.includes('uiautomator') ? replies.stock ?? '' : ''
+        if (reply instanceof Error) throw reply
+        return reply
+      }),
+      execBinary: vi.fn(),
+      listAvds: vi.fn(async () => []),
+    })
+    const ran = (runner: AdbRunner, what: string) => vi.mocked(runner.exec).mock.calls.filter((c) => c.includes(what))
+    const UNSUPPORTED = 'TAPFLOW_UIDUMP_UNSUPPORTED java.lang.ClassNotFoundException: com.android.uiautomator.core.UiAutomationShellWrapper\n'
 
-    it('runs uiautomator dump under the device-side timeout command', async () => {
-      const runner = mockRunner({ uiDump: XML })
+    it('reads the tree with the dump jar, pushed once and named by its content', async () => {
+      const runner = dumper({ tree: XML })
+      const wrapper = new AdbWrapper(runner)
+      expect(await wrapper.dumpUiHierarchy('emulator-5554')).toBe(XML)
+      await wrapper.dumpUiHierarchy('emulator-5554')
+      const pushes = ran(runner, 'push')
+      expect(pushes).toHaveLength(1)
+      const devicePath = pushes[0]!.at(-1)!
+      expect(devicePath).toMatch(/^\/data\/local\/tmp\/tapflow-uidump-[0-9a-f]{12}\.jar$/)
+      expect(ran(runner, 'app_process')[0]).toEqual([
+        '-s', 'emulator-5554', 'exec-out', `CLASSPATH=${devicePath}:/system/framework/uiautomator.jar`,
+        'timeout', '10', 'app_process', '/system/bin', 'dev.tapflow.uidump.TreeDump', '/dev/tty', '1000',
+      ])
+      expect(ran(runner, 'uiautomator')).toHaveLength(0)
+    })
+
+    it('pushes the jar to each device', async () => {
+      const runner = dumper({ tree: XML })
       const wrapper = new AdbWrapper(runner)
       await wrapper.dumpUiHierarchy('emulator-5554')
-      expect(runner.exec).toHaveBeenCalledWith(
+      await wrapper.dumpUiHierarchy('emulator-5556')
+      expect(ran(runner, 'push').map((c) => c[1])).toEqual(['emulator-5554', 'emulator-5556'])
+    })
+
+    it('keeps the XML of a dump that ended with a non-zero status', async () => {
+      const runner = dumper({ tree: Object.assign(new Error('exit 124'), { stdout: XML }) })
+      expect(await new AdbWrapper(runner).dumpUiHierarchy('emulator-5554')).toBe(XML)
+    })
+
+    it('uses uiautomator dump from then on for a device whose image lacks the classes', async () => {
+      const runner = dumper({ tree: UNSUPPORTED, stock: XML })
+      const wrapper = new AdbWrapper(runner)
+      expect(await wrapper.dumpUiHierarchy('emulator-5554')).toBe(XML)
+      expect(await wrapper.dumpUiHierarchy('emulator-5554')).toBe(XML)
+      expect(ran(runner, 'app_process')).toHaveLength(1)
+      expect(ran(runner, 'uiautomator')).toHaveLength(2)
+    })
+
+    it('falls back for one dump that produced no XML, and tries the jar again next time', async () => {
+      const runner = dumper({ tree: 'ERROR: no active window to read\n', stock: XML })
+      const wrapper = new AdbWrapper(runner)
+      expect(await wrapper.dumpUiHierarchy('emulator-5554')).toBe(XML)
+      await wrapper.dumpUiHierarchy('emulator-5554')
+      expect(ran(runner, 'app_process')).toHaveLength(2)
+    })
+
+    it('falls back when the jar cannot be pushed', async () => {
+      const runner = dumper({ push: new Error('adb: error: failed to copy'), stock: XML })
+      expect(await new AdbWrapper(runner).dumpUiHierarchy('emulator-5554')).toBe(XML)
+      expect(ran(runner, 'app_process')).toHaveLength(0)
+    })
+
+    it('runs uiautomator dump under the device-side timeout command', async () => {
+      const runner = dumper({ tree: UNSUPPORTED, stock: XML })
+      await new AdbWrapper(runner).dumpUiHierarchy('emulator-5554')
+      expect(ran(runner, 'uiautomator')[0]).toEqual([
         '-s', 'emulator-5554', 'exec-out',
         'timeout', '10', 'uiautomator', 'dump', '/dev/tty',
-      )
+      ])
     })
 
     it('strips the trailing status line and returns clean XML', async () => {
-      const runner = mockRunner({ uiDump: `${XML}UI hierarchy dumped to: /dev/tty\n` })
-      const wrapper = new AdbWrapper(runner)
-      const xml = await wrapper.dumpUiHierarchy('emulator-5554')
-      expect(xml).toBe(XML)
+      const runner = dumper({ tree: UNSUPPORTED, stock: `${XML}UI hierarchy dumped to: /dev/tty\n` })
+      expect(await new AdbWrapper(runner).dumpUiHierarchy('emulator-5554')).toBe(XML)
     })
 
-    it('throws PlatformError when the timed-out dump produced no XML', async () => {
-      const runner = mockRunner({ uiDump: '' })
-      const wrapper = new AdbWrapper(runner)
-      await expect(wrapper.dumpUiHierarchy('emulator-5554')).rejects.toThrow(PlatformError)
+    it('throws PlatformError when neither dump produced XML', async () => {
+      const runner = dumper({ tree: '', stock: '' })
+      await expect(new AdbWrapper(runner).dumpUiHierarchy('emulator-5554')).rejects.toThrow(PlatformError)
     })
 
     it('throws PlatformError on truncated XML (dump killed mid-write)', async () => {
-      const runner = mockRunner({ uiDump: `<?xml version='1.0'?>\n<hierarchy rotation="0"><node ` })
-      const wrapper = new AdbWrapper(runner)
-      await expect(wrapper.dumpUiHierarchy('emulator-5554')).rejects.toThrow(PlatformError)
+      const cut = `<?xml version='1.0'?>\n<hierarchy rotation="0"><node `
+      const runner = dumper({ tree: cut, stock: cut })
+      await expect(new AdbWrapper(runner).dumpUiHierarchy('emulator-5554')).rejects.toThrow(PlatformError)
     })
   })
 
