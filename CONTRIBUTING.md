@@ -58,9 +58,23 @@ both files. Today one does: GitHub renders `<video>` and npm does not.
 
 ## Claiming an issue
 
-Issues are not assigned in advance. Open a draft PR or post your findings on the issue and it is yours — a comment reserving one does not hold it, so no issue sits blocked behind an intent that never lands.
+Issues are not assigned in advance. Open a draft PR or post your findings on the issue to claim it. A comment saying you intend to work on something does not reserve it.
 
-Check the labels before you start: `requires: macOS` means the change runs against a real simulator or emulator and cannot be verified without a Mac (Xcode / Android SDK). A `good first issue` without that label needs only Node.js and pnpm.
+Check the labels before you start. `requires: macOS` means the change must be tested on a real simulator or emulator, which requires a Mac with Xcode or the Android SDK. A `good first issue` without that label only requires Node.js and pnpm.
+
+## AI-assisted contributions
+
+tapflow is built with coding agents, and AI-assisted contributions are welcome. We hold all contributions to the same standard, regardless of how the code was written.
+
+**Verify your own changes.** Maintainer review is for checking your reasoning, not for running your code for the first time. Before opening a PR, test what you changed. Run the test that reproduces the bug, and use a real simulator or emulator if the behavior depends on one.
+
+**Claim only what you verified.** In your PR description, distinguish between what you tested and what you couldn't test. Don't claim results you haven't measured, whether in the PR summary, changeset, or changelog.
+
+**Take only issues you can verify.** If an issue has the `requires: macOS` label, you need a Mac with Xcode or the Android SDK to verify the fix. PRs submitted without testing on the required simulator or emulator will be closed, even if the code looks correct. If you don't have the required environment, you can still contribute your findings from the code or logs in an issue comment.
+
+**You are responsible for your PR.** Using a coding agent doesn't change that. Answer review questions yourself, in your own words, and be prepared to explain your changes.
+
+**Disclose AI use and follow the PR template.** State that you used a coding agent and start with [`.github/pull_request_template.md`](./.github/pull_request_template.md). Keep the PR description short. Put technical reasoning near the code and release notes in the changeset. The PR description should link to them rather than repeat them.
 
 ## Branches & releases
 
