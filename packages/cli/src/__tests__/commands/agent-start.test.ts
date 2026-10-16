@@ -302,6 +302,20 @@ describe('cmdAgentStart', () => {
     expect(iosDisconnectSpy).toHaveBeenCalled()
   })
 
+  it('SIGTERM disconnects every agent too, so no UI-tree runner outlives it', async () => {
+    let sigtermHandler: (() => void) | undefined
+    vi.spyOn(process, 'on').mockImplementation((event, handler) => {
+      if (event === 'SIGTERM') sigtermHandler = handler as () => void
+      return process
+    })
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('process.exit') })
+
+    await cmdAgentStart({ platform: 'ios' })
+    expect(() => sigtermHandler?.()).toThrow('process.exit')
+    expect(iosDisconnectSpy).toHaveBeenCalled()
+    expect(exit).toHaveBeenCalledWith(143)
+  })
+
   it('--platform 미등록 플랫폼 → exit(1)', async () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('process.exit') })
     await expect(cmdAgentStart({ platform: 'web' })).rejects.toThrow('process.exit')

@@ -144,8 +144,14 @@ export async function cmdAgentStart(opts: AgentStartOptions): Promise<void> {
     'Press Ctrl+C to stop.',
   ])
 
+  // SIGTERM too (`kill`, a process manager): without it node dies without disconnecting, and every device's UI-tree
+  // runner (a detached xcodebuild, about 650 MB each) outlives the agent.
   process.on('SIGINT', () => {
     agents.forEach((a) => a.disconnect())
     process.exit(0)
+  })
+  process.on('SIGTERM', () => {
+    agents.forEach((a) => a.disconnect())
+    process.exit(143)
   })
 }
