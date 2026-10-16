@@ -844,6 +844,9 @@ export class IOSAgent implements DeviceAgent, NetworkControlCapability {
         // This makes an unwanted reset *succeed* rather than fail, so it is only safe alongside the
         // dashboard change that consumes the toggle after one use. The erase failing is what used
         // to stand between a stale toggle and a wiped device.
+        // A runner still starting for this device would boot it back up mid-erase (`test-without-building` boots its
+        // destination), and one already serving would outlive the simulator it reads.
+        this.uiTreeReader.stopIfDevice(deviceId)
         if (target.status !== 'shutdown') await this.simctl.shutdown(deviceId)
         // The shutdown is an await, so a newer boot for this device may have overtaken us while it
         // ran. Without this check the superseded boot goes on to erase a device the tester has
@@ -1062,8 +1065,7 @@ export class IOSAgent implements DeviceAgent, NetworkControlCapability {
     state.streamWs?.close()
     state.streamWs = null
     this.lastBundleIds.delete(deviceId)
-    // Stop the tree runner only if it serves THIS device — shutting down one
-    // booted device must not kill another device's resident runner.
+    // Each device has its own tree runner; stop this one's, never another device's.
     this.uiTreeReader.stopIfDevice(deviceId)
 
     try {
