@@ -50,7 +50,7 @@ The vocabulary is deliberately small. These ten cover most scenarios.
 | Step | Form | Behavior |
 |------|------|----------|
 | `clearState` | keyword or `clearState: <bundleId>` | Resets the app data. The keyword form uses the top-level `appId`. |
-| `launchApp` | keyword | Launches the build under test and waits, up to the default per-selector wait, until the app shows a screen. An app whose screen has no UI tree elements, such as a game, moves on to the next step when that time is up. |
+| `launchApp` | keyword | Launches the build under test and waits for its screen to settle: the role, label and id of every UI tree element unchanged for a second, so a splash screen is not taken for the first screen. A screen with no UI tree elements, such as a game, moves on after that second too. A screen whose labels keep changing moves on 3 seconds after it was first read, and one that cannot be read at all after the default per-selector wait. The wait never fails the step. A splash that stays unchanged for longer than a second can still be taken for the first screen. |
 | `tapOn` | selector | Taps the center of the matched element. |
 | `inputText` | string | Types text into the focused input field. |
 | `pressKey` | key name | Presses a keyboard key (`Enter`, `Backspace`, `Escape`, …). |

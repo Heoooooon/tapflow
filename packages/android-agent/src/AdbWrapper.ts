@@ -27,6 +27,11 @@ export class StorageFullError extends ValidationError {
   }
 }
 
+// How long `am start -W` may wait for the launched app's first frame, and the resolve call before it: together under
+// MCP's 15 s launch deadline, with room for a monkey fallback.
+const AM_START_WAIT_SEC = 10
+const RESOLVE_WAIT_SEC = 3
+
 export class AdbWrapper {
   // avdId ("avd:<name>") → ADB serial ("emulator-5554")
   private readonly serialMap = new Map<string, string>()
@@ -276,7 +281,61 @@ export class AdbWrapper {
     }
   }
 
+  /**
+   * Launch the app the way the launcher does, and return once its first frame is drawn (`am start -W`). Monkey
+   * returns before the app even has focus (measured 0.2–0.36 s against 0.5–0.9 s), so a step sent right after the
+   * reply could reach the launcher instead. Monkey stays as the fallback, and its error text is what a failure says.
+   */
   async launchApp(serial: string, packageName: string): Promise<void> {
+    const component = await this.launcherComponent(serial, packageName)
+    if (component && await this.startAndWait(serial, component)) return
+    await this.launchWithMonkey(serial, packageName)
+  }
+
+  // The launcher activity as `pkg/class`, or undefined. Only that exact shape is taken: with two launcher activities
+  // the answer is the system chooser (`android/com.android.internal.app.ResolverActivity`), "No activity found" when
+  // there is none, and older images have no `cmd package`. A `$` (an inner class) is refused too, because `adb shell`
+  // hands the line to the device shell unquoted. Monkey handles every one of those.
+  private async launcherComponent(serial: string, packageName: string): Promise<string | undefined> {
+    try {
+      // Bounded like the launch below, so a busy package manager cannot spend MCP's 15 s launch deadline here.
+      const out = await this.runner.exec(
+        '-s', serial, 'shell', 'timeout', String(RESOLVE_WAIT_SEC), 'cmd', 'package', 'resolve-activity', '--brief',
+        '-c', 'android.intent.category.LAUNCHER', packageName,
+      )
+      const last = out.split('\n').map((l) => l.trim()).filter(Boolean).pop()
+      const escaped = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      return last && new RegExp(`^${escaped}/[\\w.]+$`).test(last) ? last : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  // True once the launch went out. The flags are the launcher's own (NEW_TASK | RESET_TASK_IF_NEEDED, as monkey sets
+  // them), so a running app comes forward on the screen it was on rather than gaining a new activity on top. The exit
+  // status says little — `am start` exits 0 on some errors, and forwarding it depends on the image — so the output
+  // decides: only an `Error` line means nothing started. `Warning: … brought to the front` (already running) and
+  // `Status: timeout` (slow, but started) are launches. `-W` waits for the first frame, which can be never (an app
+  // that does not draw, a locked screen) while the dashboard's launch has no deadline of its own: the device-side
+  // `timeout` bounds it, and running out counts as launched, since the intent was delivered.
+  private async startAndWait(serial: string, component: string): Promise<boolean> {
+    let out: string
+    try {
+      out = await this.runner.exec(
+        '-s', serial, 'shell', 'timeout', String(AM_START_WAIT_SEC), 'am', 'start', '-W',
+        '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.LAUNCHER', '-f', '0x10200000', '-n', component,
+        // Measured on API 36: errors go to stdout and the exit status is 0. Folded in on the device for an image that
+        // writes them to stderr, which this runner does not return.
+        '2>&1',
+      )
+    } catch (e) {
+      out = (e as { stdout?: string }).stdout ?? ''
+      if (!out.includes('Starting: Intent')) return false
+    }
+    return !out.split('\n').some((l) => l.trim().startsWith('Error'))
+  }
+
+  private async launchWithMonkey(serial: string, packageName: string): Promise<void> {
     // monkey reserves 2% of its events for system keys, and on a device with no physical system
     // keys — an emulator whose AVD profile has hw.mainKeys=no, as Pixel profiles do — it aborts
     // with exit 251 before sending any event, the launch included ("SYS_KEYS has no physical keys

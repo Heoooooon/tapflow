@@ -642,7 +642,9 @@ export function registerTools(server: McpServer, client: TapflowClient): void {
   register(
     'launch_app',
     {
-      description: 'Launch an installed app on the device. Requires connect_device first. Waits up to 15 seconds.',
+      description: 'Launch an installed app on the device. Requires connect_device first. Waits up to 15 seconds. ' +
+        'Returning does not mean the app\'s first screen is up (iOS: the process started; Android: a first frame, which can be a splash): before a tap or ' +
+        'swipe by coordinates, call query_ui_tree or screenshot until the screen you expect is there.',
       inputSchema: {
         sessionId: z.string().describe('Session ID from list_devices'),
         buildId: z.number().int().describe('Build ID from the tapflow relay builds API'),

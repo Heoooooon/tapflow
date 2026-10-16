@@ -346,6 +346,9 @@ export class XCUITreeReader {
     }
     // Guard against a garbage / wrong-bundleId body silently parsing to an empty
     // tree — consumers must see an error, never a false "screen has no elements".
+    // Load-bearing for launch readiness too: while a launched app is still starting the runner answers a "not found"
+    // query chain, and this error is what tells flow-runner's `launchApp` the screen is not up yet (see agent-core's
+    // `DeviceAgent.launchApp`). Turning it into an empty tree would make every launch read as ready at once.
     if (!text.includes('Element subtree:') && !text.includes('Application,')) {
       throw new PlatformError(`tree runner returned an unexpected response for ${bundleId} — is the app running in the foreground?`)
     }

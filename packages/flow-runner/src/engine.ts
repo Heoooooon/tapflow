@@ -311,25 +311,56 @@ async function waitNotVisible(driver: FlowDriver, sel: Selector, timeoutMs: numb
 }
 
 /**
- * After `launchApp`, wait for the app to show a screen before the next step. A coordinate step sent before that —
+ * After `launchApp`, wait for the app's first screen before the next step. A coordinate step sent before that —
  * `scroll`, `swipe`, `inputText`, `pressKey` — is acknowledged by the agent and dropped by the app, so it passed
  * while doing nothing and the flow failed one step later under the wrong name (seen on iOS: `scroll` right after
- * `launchApp`, 5 of 5). Selector steps never had this problem: they poll. The first non-empty tree is the signal.
+ * `launchApp`, 5 of 5). Selector steps never had this problem: they poll.
  *
- * **Best effort: it never fails the step.** A game, a canvas or a WebView-only screen, or Flutter without semantics,
- * shows a screen that has no element in the tree at all, and both agents' trees leave unlabelled containers out — so
- * an empty tree cannot tell "not up yet" from "up, with nothing to name". Such an app waits out the timeout and goes
- * on, as it did before. A query that fails is the next step's to report, as it was before.
+ * **Ready is the tree's structure holding still for `SETTLE_MS`**, not the first tree that reads. An app that draws
+ * its own splash answers with the splash first — measured on a Flutter iOS app: one element, then the real screen
+ * 45–270 ms later — so a single read cannot tell the two apart. The structure is each element's role, label and
+ * identifier, in order: frames are left out because an animating screen moves them forever. An empty tree is a
+ * structure like any other, so a game, a canvas or a WebView-only screen is ready once it has read empty for a
+ * second, instead of waiting out the timeout.
+ *
+ * It rests on what the agents promise (see `DeviceAgent.queryUITree`): a read fails until the launched app's UI is
+ * up (iOS), or the launch reply already waited for the first frame (Android). An agent that answered an empty tree
+ * before then would read as settled.
+ *
+ * **Best effort: it never fails the step.** A screen whose labels keep changing (a carousel, a running clock) never
+ * holds still, so no new read starts once `SETTLE_CAP_MS` has passed since the first successful read; the one in
+ * flight still counts. A query that fails is the next
+ * step's to report, as it was before. A splash that holds still for longer than `SETTLE_MS` still reads as ready.
  */
 async function waitForScreen(driver: FlowDriver, timeoutMs: number, pollIntervalMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs
+  let shape: string | undefined
+  // When this structure was first read. Not the previous read's time: iOS reads land ~550 ms apart, so requiring
+  // SETTLE_MS between two consecutive reads would never be met there.
+  let shapeSince = 0
+  let settleBy = deadline
   try {
     for (;;) {
+      const started = Date.now()
+      // Bounded by the step's deadline, not the cap: the cap only decides whether to start another read. Cutting a
+      // read at the cap would abort every confirming read on a device whose dump takes close to it (~2.5 s on an
+      // emulator), and a screen that holds still would always wait the full cap there.
       const q = await queryOrRetry(driver, deadline)
-      if ('tree' in q && q.tree.length > 0) return
-      const remaining = deadline - Date.now()
-      if (remaining <= 0) return
-      await delay(Math.min(pollIntervalMs, remaining))
+      const now = Date.now()
+      // A failed read neither confirms nor resets: on iOS it means "not up yet", and on Android one costs a dump.
+      if ('tree' in q) {
+        if (shape === undefined) settleBy = Math.min(deadline, now + SETTLE_CAP_MS)
+        const next = screenShape(q.tree)
+        if (next !== shape) {
+          shape = next
+          shapeSince = now
+        } else if (now - shapeSince >= SETTLE_MS) {
+          return
+        }
+      }
+      if (now >= settleBy) return
+      // The poll interval counts from the read's start: an Android dump alone takes ~2.5 s.
+      await delay(Math.min(Math.max(0, pollIntervalMs - (now - started)), settleBy - now))
     }
   } catch {
     // Not this step's to report, permanent errors included. `launchApp` never read the tree before, so failing
@@ -337,6 +368,14 @@ async function waitForScreen(driver: FlowDriver, timeoutMs: number, pollInterval
     // clipping answers `invalid response shape`, permanently. A session that is really gone fails the next step,
     // which names it the same way.
   }
+}
+
+const SETTLE_MS = 1000
+const SETTLE_CAP_MS = 3 * SETTLE_MS
+
+// JSON, not a joined string: a label containing the separator would make two different screens equal.
+function screenShape(tree: UIElement[]): string {
+  return JSON.stringify(tree.map((e) => [e.role, e.label, e.identifier ?? '']))
 }
 
 async function executeStep(step: Step, flow: Flow, driver: FlowDriver, timeoutMs: number, pollIntervalMs: number): Promise<void> {
