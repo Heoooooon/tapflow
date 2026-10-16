@@ -158,7 +158,7 @@ describe('XCUITreeReader', () => {
       reader.stop()
     })
 
-    it('stop() stops every device', async () => {
+    it('stop() stops every device and holds nothing afterwards', async () => {
       const native = setup()
       const reader = new XCUITreeReader(native)
       await reader.read('udid-A', 'com.app')
@@ -166,6 +166,36 @@ describe('XCUITreeReader', () => {
       reader.stop()
       expect(native.terminateRunner).toHaveBeenCalledWith('udid-A')
       expect(native.terminateRunner).toHaveBeenCalledWith('udid-B')
+      reader.stopIfDevice('udid-A')
+      expect(native.terminateRunner).toHaveBeenCalledTimes(2)
+    })
+
+    it('a start that fails on one device leaves the other device\'s runner serving', async () => {
+      const native = setup({}, (s) => {
+        if (s.udid === 'udid-B') queueMicrotask(() => s.proc.stdout.emit('data', `TAPFLOW_TREE_READY port=${s.port}\n`))
+        else queueMicrotask(() => s.proc.stdout.emit('data', 'TAPFLOW_TREE_READY port=0\n'))
+      })
+      const reader = new XCUITreeReader(native)
+      await reader.read('udid-B', 'com.app')
+      await expect(reader.read('udid-A', 'com.app')).rejects.toThrow(/out of date/)
+      expect(native.terminateRunner).not.toHaveBeenCalledWith('udid-B')
+      await reader.read('udid-B', 'com.app')
+      expect(native.spawn).toHaveBeenCalledTimes(2)
+      reader.stop()
+    })
+
+    it('a read that arrives while the runner is starting waits for its port', async () => {
+      let announce!: () => void
+      const native = setup({}, (s) => { announce = () => s.proc.stdout.emit('data', `TAPFLOW_TREE_READY port=${s.port}\n`) })
+      const reader = new XCUITreeReader(native)
+      const first = reader.read('udid-A', 'com.app')
+      await vi.waitFor(() => expect(native.spawn).toHaveBeenCalled())
+      const second = reader.read('udid-A', 'com.app')
+      announce()
+      await expect(Promise.all([first, second])).resolves.toHaveLength(2)
+      const treePorts = fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/tree')).map(portOf)
+      expect(treePorts).toEqual([spawned[0]!.port, spawned[0]!.port])
+      reader.stop()
     })
   })
 
@@ -384,6 +414,24 @@ describe('XCUITreeReader', () => {
       expect(native.terminateRunner).toHaveBeenCalledWith('udid-A')
       expect(native.terminateRunner).not.toHaveBeenCalledWith('udid-B')
       await reader.read('udid-B', 'com.app')
+      expect(native.spawn).toHaveBeenCalledTimes(2)
+      reader.stop()
+    })
+
+    it('a late refusal from the runner already replaced does not drop its replacement', async () => {
+      const native = setup()
+      const reader = new XCUITreeReader(native)
+      await reader.read('udid-A', 'com.app')
+      let refuseLate!: () => void
+      fetchMock
+        .mockImplementationOnce(() => new Promise((_, reject) => { refuseLate = () => reject(refused()) }))
+        .mockImplementationOnce(async () => { throw refused() })
+      const late = reader.read('udid-A', 'com.app').catch(() => {})
+      await expect(reader.read('udid-A', 'com.app')).rejects.toThrow(/fetch failed/)
+      await reader.read('udid-A', 'com.app') // the replacement
+      refuseLate()
+      await late
+      await reader.read('udid-A', 'com.app')
       expect(native.spawn).toHaveBeenCalledTimes(2)
       reader.stop()
     })
