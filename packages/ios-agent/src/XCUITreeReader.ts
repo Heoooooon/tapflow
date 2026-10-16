@@ -48,8 +48,8 @@ export interface RunnerNative {
   terminateRunner(udid: string): void
 }
 
-// Everything `build-for-testing` reads from this package: the runner and host sources and the checked-in project
-// (xcodegen does not run at build time, so `project.yml` alone changes nothing that is built). The toolchain is part
+// Everything `build-for-testing` reads from this package: the runner and host sources, the checked-in project and
+// its shared scheme (xcodegen does not run at build time, so `project.yml` alone changes nothing that is built). The toolchain is part
 // of it, so an Xcode upgrade rebuilds too.
 export function computeRunnerStamp(runnerDir: string, toolchain: string): string {
   const hash = createHash('sha256').update(toolchain)
@@ -64,6 +64,7 @@ export function computeRunnerStamp(runnerDir: string, toolchain: string): string
   walk(join(runnerDir, 'TreeRunner'))
   walk(join(runnerDir, 'TreeHost'))
   files.push(join(runnerDir, 'TapflowTreeRunner.xcodeproj', 'project.pbxproj'))
+  files.push(join(runnerDir, 'TapflowTreeRunner.xcodeproj', 'xcshareddata', 'xcschemes', 'TreeRunner.xcscheme'))
   for (const f of files.map((f) => relative(runnerDir, f)).sort()) {
     hash.update(`\0${f}\0`).update(readFileSync(join(runnerDir, f)))
   }
@@ -158,23 +159,25 @@ export class XCUITreeReader {
     // Once per process: a stamp that changed while runners serve (a source edited under a running agent) must not
     // rebuild the products they are executing.
     const stamping = (this.stamp ??= this.native.sourceStamp())
-    if (this.building) return this.building
-    this.building = (async () => {
+    // Every caller goes through the catch below, the ones that joined a build another device started included:
+    // with a runner per device, two first reads at once are the normal case, and the raw xcodebuild error is
+    // its whole log.
+    const building = (this.building ??= (async () => {
       const stamp = await stamping
       if (this.native.builtStamp() === stamp) return
       logger.info('building tree runner (first run, or its sources or Xcode changed — cached afterwards)...')
       await this.native.build(this.destination(udid), stamp)
       logger.info('tree runner built')
-    })()
+    })())
     try {
-      await this.building
+      await building
     } catch (e) {
-      this.stamp = undefined
+      if (this.stamp === stamping) this.stamp = undefined
       throw new PlatformError(
         `failed to build the UI-tree runner — ensure Xcode and an iOS simulator runtime are installed (xcode-select -p): ${(e as Error).message.slice(0, 300)}`,
       )
     } finally {
-      this.building = undefined
+      if (this.building === building) this.building = undefined
     }
   }
 
@@ -227,7 +230,9 @@ export class XCUITreeReader {
     // this warm-up's own doing, so it moves the generation this warm-up compares against.
     const check = this.ready(held)
       ? answers(held.port, held.token).then((ok) => {
-        if (!ok) {
+        // Only a drop of its own moves the generation it compares against. A probe that failed because the
+        // device was shut down (or the agent stopped) meanwhile must leave that stop standing.
+        if (!ok && this.runners.get(udid) === held) {
           this.dropRunner(udid, held)
           generation = this.generation(udid)
         }
@@ -257,6 +262,8 @@ export class XCUITreeReader {
     const handle: RunnerHandle = { proc, udid, token }
     this.runners.set(udid, handle)
     const port = await this.waitReady(handle)
+    // Stopped while it was coming up: its xcodebuild takes seconds to exit, and until then the runner still answers.
+    if (this.runners.get(udid) !== handle) throw new PlatformError('tree runner start cancelled — the runner was stopped while it was starting')
     handle.port = port
     return handle as ReadyRunner
   }

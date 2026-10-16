@@ -35,7 +35,7 @@ final class TreeServer {
             conn.start(queue: self.queue)
             self.receive(conn, buffer: Data())
         }
-        // Surface a bind failure (e.g. port held by a stale runner) immediately by
+        // Surface a bind failure immediately by
         // exiting — otherwise the process stays alive looking "ready" and the host
         // only fails after the full 90s /health poll.
         listener.stateUpdateHandler = { [weak self] state in

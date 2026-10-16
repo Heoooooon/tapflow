@@ -102,6 +102,18 @@ export async function cmdAgentStart(opts: AgentStartOptions): Promise<void> {
     claims.set(platform, claim.release)
   }
 
+  // SIGTERM too (`kill`, a process manager): without it node dies without disconnecting, and every device's UI-tree
+  // runner (a detached xcodebuild, about 650 MB each) outlives the agent. Registered before connecting, and reading
+  // `agents` when the signal arrives, so a platform already up is stopped while a slower one is still connecting.
+  process.on('SIGINT', () => {
+    agents.forEach((a) => a.disconnect())
+    process.exit(0)
+  })
+  process.on('SIGTERM', () => {
+    agents.forEach((a) => a.disconnect())
+    process.exit(143)
+  })
+
   // ── Connect each registered platform ────────────────────────────────────
   for (const platform of platformsToRun) {
     const spinner = createSpinner(`Connecting ${platform} agent…`)
@@ -143,15 +155,4 @@ export async function cmdAgentStart(opts: AgentStartOptions): Promise<void> {
     `Relay  : ${relayUrl}`,
     'Press Ctrl+C to stop.',
   ])
-
-  // SIGTERM too (`kill`, a process manager): without it node dies without disconnecting, and every device's UI-tree
-  // runner (a detached xcodebuild, about 650 MB each) outlives the agent.
-  process.on('SIGINT', () => {
-    agents.forEach((a) => a.disconnect())
-    process.exit(0)
-  })
-  process.on('SIGTERM', () => {
-    agents.forEach((a) => a.disconnect())
-    process.exit(143)
-  })
 }

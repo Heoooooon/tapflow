@@ -316,6 +316,21 @@ describe('cmdStart', () => {
       expect(mockTunnel.stop).toHaveBeenCalled()
     })
 
+    it('SIGTERM stops the agents and the tunnel too, exiting 143', async () => {
+      vi.mocked(config).tunnel = { provider: 'tailscale' }
+      const onSpy = vi.spyOn(process, 'on')
+      const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+
+      await cmdStart({ platform: 'ios' })
+
+      const call = onSpy.mock.calls.find(([event]) => event === 'SIGTERM')
+      const handler = call![1] as () => void
+      handler()
+      expect(iosDisconnectSpy).toHaveBeenCalled()
+      expect(mockTunnel.stop).toHaveBeenCalled()
+      expect(exit).toHaveBeenCalledWith(143)
+    })
+
     it('터널 기동 실패(publicUrl null)면 localhost 배너 유지', async () => {
       vi.mocked(config).tunnel = { provider: 'tailscale' }
       vi.mocked(startConfiguredTunnel).mockResolvedValue({ tunnel: null, publicUrl: null })

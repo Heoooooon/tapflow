@@ -226,6 +226,23 @@ describe('XCUITreeReader', () => {
       expect(native.terminateRunner).toHaveBeenCalledWith('udid-A')
     })
 
+    it('does not hand back a runner stopped while it was answering its first /health', async () => {
+      // A killed xcodebuild takes seconds to exit, and its runner answers until then.
+      const native = setup()
+      let answerHealth!: () => void
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes('/health')) await new Promise<void>((r) => { answerHealth = r })
+        return healthy(url)
+      })
+      const reader = new XCUITreeReader(native)
+      const read = reader.read('udid-A', 'com.app')
+      await vi.waitFor(() => expect(answerHealth).toBeTypeOf('function'))
+      reader.stopIfDevice('udid-A')
+      answerHealth()
+      await expect(read).rejects.toThrow(/cancelled/)
+      expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('/tree'))).toBe(false)
+    })
+
     it('names a runner built before the handshake (it announces port 0) as out of date', async () => {
       const native = setup({}, (s) => queueMicrotask(() => s.proc.stdout.emit('data', 'TAPFLOW_TREE_READY port=0\n')))
       const reader = new XCUITreeReader(native)
@@ -286,6 +303,20 @@ describe('XCUITreeReader', () => {
       await reader.read('udid-A', 'com.app')
       expect(native.build).toHaveBeenCalledWith('platform=iOS Simulator,id=udid-A', 'stamp-1')
       reader.stop()
+    })
+
+    it('gives every device waiting on a failed build the short error, not the build log', async () => {
+      const log = 'Command failed: xcodebuild build-for-testing\n' + 'x'.repeat(5000)
+      const native = setup({ builtStamp: vi.fn(() => undefined), build: vi.fn(async () => { throw new Error(log) }) })
+      const reader = new XCUITreeReader(native)
+      const results = await Promise.allSettled([reader.read('udid-A', 'com.app'), reader.read('udid-B', 'com.app')])
+      for (const r of results) {
+        expect(r.status).toBe('rejected')
+        const message = (r as PromiseRejectedResult).reason.message as string
+        expect(message).toMatch(/^failed to build the UI-tree runner/)
+        expect(message.length).toBeLessThan(600)
+      }
+      expect(native.build).toHaveBeenCalledTimes(1)
     })
 
     it('stamps the sources once per process, not on every start', async () => {
@@ -469,6 +500,25 @@ describe('XCUITreeReader', () => {
       reader.stop()
     })
 
+    it.each([
+      ['the device was shut down', (r: XCUITreeReader) => r.stopIfDevice('udid-A')],
+      ['the agent stopped', (r: XCUITreeReader) => r.stop()],
+    ])('is not restarted by a warm-up whose probe failed because %s meanwhile', async (_, stopNow) => {
+      // `test-without-building` boots its simulator: restarting here would power the device back up, or leave a
+      // runner nothing will stop.
+      const native = setup()
+      const reader = new XCUITreeReader(native)
+      await reader.read('udid-A', 'com.app')
+      let failProbe!: () => void
+      fetchMock.mockImplementationOnce(() => new Promise((_, reject) => { failProbe = () => reject(refused()) }))
+      reader.warm('udid-A')
+      await vi.waitFor(() => expect(failProbe).toBeTypeOf('function'))
+      stopNow(reader)
+      failProbe()
+      await new Promise((r) => setTimeout(r, 10))
+      expect(native.spawn).toHaveBeenCalledTimes(1)
+    })
+
     it('is kept by a warm-up when it still answers', async () => {
       const native = setup()
       const reader = new XCUITreeReader(native)
@@ -498,6 +548,7 @@ describe('computeRunnerStamp', () => {
     write('TreeRunner/TreeServer.swift', 'server')
     write('TreeHost/App.swift', 'host')
     write('TapflowTreeRunner.xcodeproj/project.pbxproj', 'project')
+    write('TapflowTreeRunner.xcodeproj/xcshareddata/xcschemes/TreeRunner.xcscheme', 'scheme')
     write('project.yml', 'spec')
     write('build/Build/Products/x.xctestrun', 'built')
   })
@@ -508,6 +559,7 @@ describe('computeRunnerStamp', () => {
     ['a new runner source', () => write('TreeRunner/Extra.swift', 'extra')],
     ['a host source', () => write('TreeHost/App.swift', 'host 2')],
     ['the checked-in project', () => write('TapflowTreeRunner.xcodeproj/project.pbxproj', 'project 2')],
+    ['the shared scheme', () => write('TapflowTreeRunner.xcodeproj/xcshareddata/xcschemes/TreeRunner.xcscheme', 'scheme 2')],
   ])('changes with %s', (_, change) => {
     const before = computeRunnerStamp(dir, 'Xcode 26.5')
     change()

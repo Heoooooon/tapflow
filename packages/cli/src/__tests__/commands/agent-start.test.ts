@@ -316,6 +316,16 @@ describe('cmdAgentStart', () => {
     expect(exit).toHaveBeenCalledWith(143)
   })
 
+  it('listens for signals before connecting, so a platform already up is stopped while another still connects', async () => {
+    const events: string[] = []
+    vi.spyOn(process, 'on').mockImplementation((event) => { events.push(String(event)); return process })
+    iosConnectSpy.mockImplementation(() => new Promise(() => {}))
+
+    void cmdAgentStart({ platform: 'ios' })
+    await vi.waitFor(() => expect(iosConnectSpy).toHaveBeenCalled())
+    expect(events).toEqual(expect.arrayContaining(['SIGINT', 'SIGTERM']))
+  })
+
   it('--platform 미등록 플랫폼 → exit(1)', async () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('process.exit') })
     await expect(cmdAgentStart({ platform: 'web' })).rejects.toThrow('process.exit')

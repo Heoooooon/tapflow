@@ -129,10 +129,23 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
       'Press Ctrl+C to stop.',
     ])
     process.on('SIGINT', () => { stopTls?.(); void tunnel?.stop(); process.exit(0) })
+    process.on('SIGTERM', () => { stopTls?.(); void tunnel?.stop(); process.exit(143) })
     return
   }
 
   const agents: Array<{ disconnect(): void }> = []
+
+  // SIGTERM too (`kill`, a process manager): without it node dies without disconnecting, and every device's UI-tree
+  // runner (a detached xcodebuild, about 650 MB each) outlives it. Registered before connecting, and reading `agents`
+  // when the signal arrives, so a platform already up is stopped while a slower one is still connecting.
+  const shutdown = (code: number) => () => {
+    stopTls?.()
+    agents.forEach((a) => a.disconnect())
+    void tunnel?.stop()
+    process.exit(code)
+  }
+  process.on('SIGINT', shutdown(0))
+  process.on('SIGTERM', shutdown(143))
 
   // ── 5. Connect each registered platform ──────────────────────────────────
   for (const platform of platformsToRun) {
@@ -160,11 +173,4 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
     `Open ${publicUrl ?? `${httpScheme}://${displayHost}:${RELAY_PORT}`} in your browser.`,
     'Press Ctrl+C to stop.',
   ])
-
-  process.on('SIGINT', () => {
-    stopTls?.()
-    agents.forEach((a) => a.disconnect())
-    void tunnel?.stop()
-    process.exit(0)
-  })
 }

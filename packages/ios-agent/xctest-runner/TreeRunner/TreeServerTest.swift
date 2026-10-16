@@ -15,7 +15,8 @@ final class TreeServerTest: XCTestCase {
         }
         let server = try TreeServer(port: port, token: env["TAPFLOW_TREE_TOKEN"] ?? "")
         server.start()
-        // Block forever — the host kills the process to stop the runner.
-        RunLoop.current.run()
+        // Block forever — the host kills the process to stop the runner. The server's handlers hold it weakly, so
+        // keep it alive here explicitly rather than trusting the local to outlive its last use.
+        withExtendedLifetime(server) { RunLoop.current.run() }
     }
 }
