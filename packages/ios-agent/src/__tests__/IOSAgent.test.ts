@@ -3793,8 +3793,10 @@ describe('IOSAgent', () => {
     it('re-booting a running device stops the previous capture and leaves one audio poll', async () => {
       const setSpy = vi.spyOn(globalThis, 'setInterval')
       const clearSpy = vi.spyOn(globalThis, 'clearInterval')
+      let session: { agent: IOSAgent; browser: WebSocket } | undefined
       try {
-        const { agent, browser } = await bootSession()
+        session = await bootSession()
+        const { agent, browser } = session
         await vi.waitFor(() => expect(mockLaunchAudioHelper).toHaveBeenCalledTimes(1))
         const first = MockAudioStreamer.mock.results[0].value as { stop: ReturnType<typeof vi.fn> }
         const audioPolls = () => setSpy.mock.results
@@ -3814,8 +3816,9 @@ describe('IOSAgent', () => {
         expect(live).toHaveLength(1)
         const second = MockAudioStreamer.mock.results[1].value as { stop: ReturnType<typeof vi.fn> }
         expect(second.stop).not.toHaveBeenCalled()
-        agent.disconnect(); browser.close()
       } finally {
+        session?.agent.disconnect()
+        session?.browser.close()
         setSpy.mockRestore()
         clearSpy.mockRestore()
       }
