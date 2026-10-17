@@ -163,6 +163,17 @@
   }
 }
 
+/* Overlays (dialogs, menus, selects, tooltips, sheets) open and close with tailwindcss-animate. Someone who asked
+   the OS for less motion gets them instantly. `none` rather than a zero duration: Radix keeps an exiting overlay
+   mounted until its animation ends, and with no animation name it unmounts at once. A substring match because the
+   components write `data-[state=open]:animate-in`, a different class from the bare `animate-in` only Tooltip uses. */
+@media (prefers-reduced-motion: reduce) {
+  [class*="animate-in"],
+  [class*="animate-out"] {
+    animation: none !important;
+  }
+}
+
 
 /* A tap or swipe the agent made, drawn on the watch page's device (A2): it grows and fades, then is gone. The
    translate is repeated here because Tailwind 3's translate utilities are a `transform` this would replace. */

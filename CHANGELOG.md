@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Dashboard overlays open and close with a short fade and scale.** Dialogs, menus, selects and tooltips fade and scale; the mobile sidebar slides. They used to appear and vanish instantly: their motion classes need the `tailwindcss-animate` plugin, which was never installed. It is now. If your OS is set to reduce motion, they still open instantly.
+
 - **The MCP server, and `tapflow flow run` when it is not recording video, no longer download the device's stream.** Neither reads it, and an iOS session sends about 34 Mbit/s of JPEG, which a remote MCP server or CI runner used to download only to discard. They now ask the relay for no frames when they join a session (`stream: false` on `session:start`); a teammate watching the session still gets the stream. An older relay ignores the request and keeps sending, as before.
 
 - **Read-only copy fields in the dashboard use the same text size as other fields.** The invite and reset links, the API token, the agent command, and `tapflow admin init` were 12px on a phone while every other field was 16px; they now match. A desktop browser already showed them at 14px and is unchanged.

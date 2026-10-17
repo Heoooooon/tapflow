@@ -84,6 +84,9 @@ export function TeamSettings() {
   const inviteButtonRef = useRef<HTMLButtonElement>(null)
   const listRegion = useFocusAfterSwap<HTMLTableSectionElement>(view, inviteButtonRef)
   const [issuedReset, setIssuedReset] = useState<IssuedReset | null>(null)
+  // Open is its own state so closing leaves `issuedReset` in place while the dialog animates out — clearing it
+  // there showed "Email could not be sent to ." for the length of the fade.
+  const [resetOpen, setResetOpen] = useState(false)
   // The reset dialog opens from state, with no `DialogTrigger` for Radix to return focus to, so the
   // row's button is remembered here and focus goes back to it on close.
   const resetReturnRef = useRef<HTMLButtonElement | null>(null)
@@ -142,7 +145,9 @@ export function TeamSettings() {
 
   function handleDialogClose(open: boolean) {
     setInviteOpen(open)
-    if (!open) { setInviteLink(''); setLinkCopied(false); setInviteStatus(''); reset() }
+    // Cleared on the way in, not on the way out: a closing dialog stays on screen through its exit animation,
+    // and clearing it then showed the empty form fading out in place of what was just issued.
+    if (open) { setInviteLink(''); setLinkCopied(false); setInviteStatus(''); reset() }
   }
 
   async function handleRoleChange(id: number, role: string) {
@@ -165,6 +170,7 @@ export function TeamSettings() {
       const link = json.resetUrl ?? joinPath((await loadTeammateBases()).linkBase, `/reset-password?token=${json.token}`)
       const copied = await copyToClipboard(link)
       setIssuedReset({ email: member.email, link, copied, emailSent: json.emailSent })
+      setResetOpen(true)
       if (json.emailSent) {
         toast.success(`Reset email sent to ${member.email}`)
       } else if (copied) {
@@ -204,7 +210,7 @@ export function TeamSettings() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <Dialog open={issuedReset !== null} onOpenChange={(open) => { if (!open) setIssuedReset(null) }}>
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
         <DialogContent className="sm:max-w-md" onCloseAutoFocus={(e) => { e.preventDefault(); resetReturnRef.current?.focus() }}>
           <DialogHeader>
             <DialogTitle>Password reset link</DialogTitle>
@@ -218,7 +224,7 @@ export function TeamSettings() {
           {issuedReset && (
             <div className="flex flex-col gap-3 pt-2">
               <CopyableLink link={issuedReset.link} copied={issuedReset.copied} noun="reset link" />
-              <Button onClick={() => setIssuedReset(null)}>Done</Button>
+              <Button onClick={() => setResetOpen(false)}>Done</Button>
             </div>
           )}
         </DialogContent>

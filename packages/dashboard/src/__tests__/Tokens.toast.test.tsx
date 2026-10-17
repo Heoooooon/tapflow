@@ -170,8 +170,8 @@ describe('Tokens — toast feedback', () => {
     )
   }
 
-  // "Copy & close" closes through a state setter, which a controlled Radix dialog does not report through
-  // onOpenChange — so without the reset, the next open showed the previous token and its failure text.
+  // The dialog clears on the way in (the trigger's onOpenChange(true)), not on close, so it stays unchanged
+  // while it animates out. Removing that reset would reopen on the previous token and its failure text.
   it('TC4c: 복사 실패 후 성공으로 닫았다가 다시 열면 이전 토큰도 실패 문구도 남지 않는다', async () => {
     const writeText = vi.fn().mockRejectedValueOnce(new Error('denied')).mockResolvedValue(undefined)
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
