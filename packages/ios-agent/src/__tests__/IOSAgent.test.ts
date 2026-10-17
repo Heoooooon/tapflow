@@ -3786,6 +3786,43 @@ describe('IOSAgent', () => {
       expect(instance.stop).toHaveBeenCalled()
       browser.close()
     })
+
+    // `tapflow flow run` and the MCP server send `device:boot` for a device that is already running, on
+    // every run. Each boot used to stand up a new capture over the old one: an orphaned audiotap-helper
+    // and one more 1.5s poll per run.
+    it('re-booting a running device stops the previous capture and leaves one audio poll', async () => {
+      const setSpy = vi.spyOn(globalThis, 'setInterval')
+      const clearSpy = vi.spyOn(globalThis, 'clearInterval')
+      let session: { agent: IOSAgent; browser: WebSocket } | undefined
+      try {
+        session = await bootSession()
+        const { agent, browser } = session
+        await vi.waitFor(() => expect(mockLaunchAudioHelper).toHaveBeenCalledTimes(1))
+        const first = MockAudioStreamer.mock.results[0].value as { stop: ReturnType<typeof vi.fn> }
+        const audioPolls = () => setSpy.mock.results
+          .filter((_, i) => setSpy.mock.calls[i][1] === 1500)
+          .map((r) => r.value as ReturnType<typeof setInterval>)
+        expect(audioPolls()).toHaveLength(1)
+        const firstPoll = audioPolls()[0]
+        expect(first.stop).not.toHaveBeenCalled()
+
+        browser.send(JSON.stringify({ type: 'device:boot', requestId: 'rq-reboot', sessionId: agent.sessionId, payload: { deviceId: 'dev-1' } }))
+        await waitForType(browser, 'device:ready')
+        await vi.waitFor(() => expect(mockLaunchAudioHelper).toHaveBeenCalledTimes(2))
+
+        expect(first.stop).toHaveBeenCalled()
+        expect(clearSpy).toHaveBeenCalledWith(firstPoll)
+        const live = audioPolls().filter((h) => !clearSpy.mock.calls.some(([c]) => c === h))
+        expect(live).toHaveLength(1)
+        const second = MockAudioStreamer.mock.results[1].value as { stop: ReturnType<typeof vi.fn> }
+        expect(second.stop).not.toHaveBeenCalled()
+      } finally {
+        session?.agent.disconnect()
+        session?.browser.close()
+        setSpy.mockRestore()
+        clearSpy.mockRestore()
+      }
+    })
   })
 
   describe('clipboard bridge', () => {

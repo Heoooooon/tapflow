@@ -586,16 +586,20 @@ export class IOSAgent implements DeviceAgent, NetworkControlCapability {
     state.streamReader?.cancel().catch(() => { /* an errored stream rejects cancel(); unhandled, it ends the CLI */ })
     state.streamReader = null
     state.captureStreamer = null // reader.cancel() kills the helper proc; drop the ref so a stale requestKeyframe() no-ops
-    if (state.audioPoll) { clearInterval(state.audioPoll); state.audioPoll = null }
-    state.audioStreamer?.stop() // closes the loopback server → the helper sees EOF and exits
-    state.audioStreamer = null
-    state.audioPort = 0
-    state.audioPids = null
+    this.stopAudioCapture(state)
     state.touchHelper?.stop()
     state.touchHelper = null
     state.booted = false
     state.streamWs?.close()
     state.streamWs = null
+  }
+
+  private stopAudioCapture(state: DeviceState): void {
+    if (state.audioPoll) { clearInterval(state.audioPoll); state.audioPoll = null }
+    state.audioStreamer?.stop() // closes the loopback server → the helper sees EOF and exits
+    state.audioStreamer = null
+    state.audioPort = 0
+    state.audioPids = null
   }
 
   /** Resolves `false` when a newer boot or a relay loss retired this one during the chrome load, in which case
@@ -817,6 +821,9 @@ export class IOSAgent implements DeviceAgent, NetworkControlCapability {
       state.streamReader?.cancel().catch(() => { /* an errored stream rejects cancel(); unhandled, it ends the CLI */ })
       state.streamReader = null
       state.captureStreamer = null // reader.cancel() kills the helper proc; drop the ref so a stale requestKeyframe() no-ops
+      // A boot of a device that is already running starts its own capture below. Without stopping the
+      // last one here, every re-boot orphaned an audiotap-helper and left its poll running.
+      this.stopAudioCapture(state)
       state.touchHelper?.stop()
       state.touchHelper = null
       state.booted = false
