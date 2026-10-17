@@ -2,6 +2,7 @@
 component: Button
 source: components/ui/button.tsx
 cva: buttonVariants
+own: state
 ---
 
 # Button
@@ -33,14 +34,14 @@ source of truth. `scripts/__tests__/designSpecMatchesCva.test.mjs` fails when th
 |-------|----------------|-----------:|-----|
 | `default` | `--primary` / `--primary-foreground` | most (it is the default) | Primary action — one per view |
 | `destructive` | `--destructive` at 10% / `--destructive` | 6 | Delete, leave, revoke |
-| `outline` | `--background` + 1px `--input` border / `--foreground` | 18 | Secondary action |
-| `secondary` | `--secondary` / `--secondary-foreground` | 3 | Tertiary action |
+| `outline` | `--background` + 1px `--input` border / `--foreground` | 16 | Secondary action |
+| `secondary` | `--secondary` / `--secondary-foreground` | 1 | Tertiary action |
 | `ghost` | transparent / `--foreground` | 18 | Icon buttons, inline actions in lists and toolbars |
 | `link` | transparent / `--primary` | 0 | Defined, not used yet |
 
 `destructive` is a **soft tint**, not a solid red fill. This is a local choice — upstream shadcn uses a solid
 fill — and follows from the monochrome-first rule: no saturated surface in the UI. In dark mode
-`--destructive` is raised to L 62% so both the 10% tint and the text stay legible.
+`--destructive` is raised to L 62%: it has to stay at L ≥ 60% for both the 10% tint and the text to stay legible.
 
 ### `size`
 
@@ -70,14 +71,15 @@ the same for every variant and are defined once in DESIGN.md.
 | `ghost` | transparent | `--accent`, text `--accent-foreground` | shared ring | 50% opacity |
 | `link` | transparent | underline, offset 4px | shared ring | 50% opacity |
 
-**Pressed is motion, not a state.** Every enabled button moves down 1px while pressed
+**Pressed is motion, not a state.** A Button that is not `disabled` moves down 1px while pressed
 (`translateY(1px)`, 120ms) and its colors do not change, so there is no `pressed` variant to draw. The rule
-is global in `src/index.css`, and it is skipped for elements with `aria-haspopup` (Select and
-DropdownMenu triggers) because the shift glitches when the overlay opens.
+is global in `src/index.css`. It skips DropdownMenu triggers (`aria-haspopup`), because the shift glitches
+when the menu opens, and a Button rendered `asChild` as a link, which is not a `<button>`.
 
 Only `disabled:` is styled. A button that is busy but must keep focus uses `aria-disabled` and dims itself
 with `aria-disabled:` classes at the call site, because a focused element that becomes `disabled` loses
-focus. It looks the same as `disabled`.
+focus. It has the same 50% opacity as `disabled`, but it still shows `hover` and still moves when pressed:
+nothing removes its pointer events.
 
 Button has no `selected`, `loading` or `error` state in code. Do not draw one; if a screen needs it,
 propose it as a code change first.
@@ -98,6 +100,6 @@ propose it as a code change first.
 
 ## Figma
 
-Component set **Button** (`29:422`) in the `Design System` page — `variant` 6 × `size` 7 × `state` 4 = 168.
+Component set **Button** (`29:422`) in the `Design System` page — one variant for every `variant` × `size` × `state`.
 It is one set on purpose: `destructive` is a value of the `variant` prop, not a separate component, so a
 separate "Button Danger" set would stop mapping 1:1 to code.

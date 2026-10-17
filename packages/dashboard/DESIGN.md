@@ -183,11 +183,12 @@ Every interactive component uses the same state names. A component spec lists on
 |-------|-----------------|------|
 | `default` | — | The variant's resting tokens |
 | `hover` | `hover:` | Defined per component — usually `--accent`, or the surface at reduced alpha |
-| `focus` | `focus-visible:` (keyboard focus) | 2px `--ring` ring, 2px transparent offset, drawn outside the box — never changes its size |
+| `focus` | `focus-visible:` (keyboard focus) | 2px `--ring` ring outside a 2px offset filled with `--background` (`ring-offset-background`) — drawn outside the box, never changes its size. On a surface other than `--background` (a card) the offset shows as a band |
 | `disabled` | `disabled:` | 50% opacity, no pointer events |
 
-- **Pressed is motion, not a state.** Enabled buttons shift down 1px while pressed (`translateY(1px)`, 120ms) and
-  keep their colors, so no component has a `pressed` variant. The rule is global in `src/index.css`:
+- **Pressed is motion, not a state.** Every `<button>` and `[role="button"]` that is not `disabled` shifts down 1px
+  while pressed (`translateY(1px)`, 120ms) and keeps its colors, so a pressed variant is drawn only where a
+  component adds one — `SidebarMenuButton` does (`active:bg-sidebar-accent`). The rule is global in `src/index.css`:
 
   ```css
   button:not([aria-haspopup]):not(:disabled),
@@ -200,9 +201,11 @@ Every interactive component uses the same state names. A component spec lists on
   }
   ```
 
-  Elements with `aria-haspopup` (Select and DropdownMenu triggers) are excluded, because the shift glitches
-  when the overlay opens.
-- **The ring is not the same everywhere.** `SidebarMenuButton` uses `--sidebar-ring` (link blue) with no offset.
+  Elements with `aria-haspopup` (DropdownMenu triggers) are excluded, because the shift glitches when the
+  overlay opens. A Select trigger has `role="combobox"` and no `aria-haspopup`, so it does shift. A `Button`
+  rendered `asChild` as a link does not, since it is neither a `<button>` nor `role="button"`.
+- **The ring is not the same everywhere.** `SidebarMenuButton` uses `--sidebar-ring` (link blue) with no offset,
+  and `SelectTrigger` uses `focus:` rather than `focus-visible:`, so a mouse click shows its ring too.
   Read the component's base classes rather than assuming the shared ring.
 - **Disabled is not 50% everywhere.** `Label` dims to 70% when its control is disabled (`peer-disabled:opacity-70`).
 - **Error does not change a control.** Inputs have no `aria-invalid` style; the error is the message below the
@@ -219,11 +222,12 @@ and keep their code names** — `default`, not `primary`. To rename one, change 
 `scripts/__tests__/designSpecMatchesCva.test.mjs` checks each spec's property values against the `cva`
 it names, and that every spec below is linked and exists.
 
-Axes match the Figma `Design System` page. A component without a spec yet is `pending`.
+Axes match the Figma `Design System` page. A component with a spec lists only the axis names — the values and
+their count live in the spec, which the check holds to code. A component without a spec yet is `pending`.
 
 | Component | Source | Axes | Spec |
 |-----------|--------|------|------|
-| Button | `components/ui/button.tsx` | variant 6 × size 7 × state 4 | [button.md](./design/components/button.md) |
+| Button | `components/ui/button.tsx` | variant × size × state | [button.md](./design/components/button.md) |
 | Label | `components/ui/label.tsx` | hint 2 × state 2 | pending |
 | Card | `components/ui/card.tsx` | level 5 | pending |
 | Input | `components/ui/input.tsx` | state 3 × content 3 | pending |
@@ -304,7 +308,7 @@ The placeholder color is determined by `avatarColors(name)`.
 
 #### Theme Toggle
 
-`components/ThemeToggle.tsx` — based on `next-themes` `useTheme`. Three states: light / dark / system.
+`components/ThemeToggle.tsx` — based on `next-themes` `useTheme`. A `ghost` / `icon` Button that flips between light and dark; it has no system state.
 
 ## Do's and Don'ts
 

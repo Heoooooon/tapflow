@@ -8,12 +8,14 @@ import ts from 'typescript'
 // existed, DESIGN.md's Button size table had already lost `icon-sm` while three call sites used it.
 //
 // So each spec names its source in frontmatter (`source`, `cva`), and every axis of that `cva` must
-// appear as a `### \`axis\`` heading whose table lists exactly the same values. Axes that are not in
-// `cva` (`state` is CSS, not a prop) are the spec's own and are not checked here.
+// appear as a `### \`axis\`` heading whose table lists exactly the same values. An axis that is not in
+// `cva` (`state` is CSS, not a prop) must be declared in `own:` — otherwise an axis deleted from code would
+// stay documented, green. A component with no `cva` at all says `cva: none`, and every axis it has is its own.
 //
 // Reading nothing must fail, not pass. A `cva` name that no longer exists, or a refactor that moves the
 // variants somewhere this cannot see, would otherwise compare an empty set to whatever the spec says
-// about an axis it then never looks at — green, and checking nothing.
+// about an axis it then never looks at — green, and checking nothing. That holds per axis and per value
+// too: an axis pulled out into a shared constant, or written `as const`, is a thrown error, not a skipped one.
 
 const root = join(import.meta.dirname, '../..')
 const dashboard = join(root, 'packages/dashboard')
@@ -33,8 +35,15 @@ export function cvaAxes(sourceText, cvaName) {
         if (variants && ts.isObjectLiteralExpression(variants.initializer)) {
           found = {}
           for (const axis of variants.initializer.properties) {
-            if (!ts.isPropertyAssignment(axis) || !ts.isObjectLiteralExpression(axis.initializer)) continue
-            found[nameOf(axis.name)] = axis.initializer.properties.map((v) => nameOf(v.name)).filter(Boolean)
+            const axisName = ts.isPropertyAssignment(axis) ? nameOf(axis.name) : null
+            if (!axisName || !ts.isObjectLiteralExpression(axis.initializer)) {
+              throw new Error(`\`${cvaName}\`: a variants entry is not a literal axis this can read (${axis.getText()})`)
+            }
+            found[axisName] = axis.initializer.properties.map((v) => {
+              const value = ts.isPropertyAssignment(v) ? nameOf(v.name) : null
+              if (!value) throw new Error(`\`${cvaName}\`.${axisName}: a value is not a literal key (${v.getText()})`)
+              return value
+            })
           }
         }
       }
@@ -52,10 +61,18 @@ export function cvaAxes(sourceText, cvaName) {
 export function specAxes(markdown) {
   const axes = {}
   let current = null
+  let fenced = false
   for (const line of markdown.split('\n')) {
+    if (/^\s*```/.test(line)) { fenced = !fenced; continue }
+    if (fenced) continue
     const heading = /^###\s+`([^`]+)`\s*$/.exec(line)
-    if (heading) { current = heading[1]; axes[current] = []; continue }
-    if (/^#{1,3}\s/.test(line)) { current = null; continue }
+    if (heading) {
+      current = heading[1]
+      if (axes[current]) throw new Error(`axis \`${current}\` has two sections`)
+      axes[current] = []
+      continue
+    }
+    if (/^#{1,6}\s/.test(line)) { current = null; continue }
     const cell = current && /^\|\s*`([^`]+)`\s*\|/.exec(line)
     if (cell) axes[current].push(cell[1])
   }
@@ -69,8 +86,11 @@ export function frontmatter(markdown) {
 }
 
 /** Differences between code and spec, as readable lines. Empty means they agree. */
-export function drift(code, spec) {
+export function drift(code, spec, own = []) {
   const out = []
+  for (const axis of Object.keys(spec)) {
+    if (!(axis in code) && !own.includes(axis)) out.push(`axis \`${axis}\` is in the spec, not in code, and not declared in \`own:\``)
+  }
   for (const [axis, values] of Object.entries(code)) {
     const written = spec[axis]
     if (!written) { out.push(`axis \`${axis}\` has no "### \`${axis}\`" section`); continue }
@@ -80,7 +100,7 @@ export function drift(code, spec) {
   return out
 }
 
-const specs = readdirSync(specDir).filter((f) => f.endsWith('.md'))
+const specs = readdirSync(specDir, { recursive: true }).filter((f) => f.endsWith('.md'))
 
 describe('component specs match the cva they name', () => {
   it('finds at least one spec', () => expect(specs.length).toBeGreaterThan(0))
@@ -88,18 +108,19 @@ describe('component specs match the cva they name', () => {
   for (const file of specs) {
     it(file, () => {
       const md = readFileSync(join(specDir, file), 'utf8')
-      const { source, cva } = frontmatter(md)
+      const { source, cva, own = '' } = frontmatter(md)
       expect(source, `${file}: frontmatter needs \`source\``).toBeTruthy()
-      expect(cva, `${file}: frontmatter needs \`cva\``).toBeTruthy()
-      const code = cvaAxes(readFileSync(join(dashboard, source), 'utf8'), cva)
-      expect(drift(code, specAxes(md))).toEqual([])
+      expect(cva, `${file}: frontmatter needs \`cva\` (or \`cva: none\`)`).toBeTruthy()
+      const text = readFileSync(join(dashboard, source), 'utf8')
+      const code = cva === 'none' ? {} : cvaAxes(text, cva)
+      expect(drift(code, specAxes(md), own.split(/[\s,]+/).filter(Boolean))).toEqual([])
     })
   }
 })
 
 describe('DESIGN.md links every spec, and every link resolves', () => {
   const design = readFileSync(join(dashboard, 'DESIGN.md'), 'utf8')
-  const linked = [...design.matchAll(/\]\(\.\/design\/components\/([\w-]+\.md)\)/g)].map((m) => m[1])
+  const linked = [...design.matchAll(/\]\((?:\.\/)?design\/components\/([\w/-]+\.md)(?:#[^)]*)?\)/g)].map((m) => m[1])
 
   it('links at least one spec', () => expect(linked.length).toBeGreaterThan(0))
   for (const f of linked) it(`${f} exists`, () => expect(existsSync(join(specDir, f))).toBe(true))
@@ -118,6 +139,21 @@ describe('the check itself', () => {
   })
   it('throws when the variants are not a literal it can read', () => {
     expect(() => cvaAxes(`const v = cva('b', { variants: shared })`, 'v')).toThrow(/no cva variants/)
+  })
+  it('throws on one unreadable axis or value, instead of dropping it', () => {
+    expect(() => cvaAxes(`const v = cva('b', { variants: { a: { x: '' }, size: sizes } })`, 'v')).toThrow(/not a literal axis/)
+    expect(() => cvaAxes(`const v = cva('b', { variants: { size: { x: '' } as const } })`, 'v')).toThrow(/not a literal axis/)
+    expect(() => cvaAxes(`const v = cva('b', { variants: { a: { x: '' }, ...shared } })`, 'v')).toThrow(/not a literal axis/)
+    expect(() => cvaAxes(`const v = cva('b', { variants: { size: { x: '', [K.y]: '' } } })`, 'v')).toThrow(/not a literal key/)
+  })
+  it('reports an axis only the spec has unless it is declared own', () => {
+    const spec = specAxes('### `size`\n| `sm` |\n| `icon-sm` |\n### `tone`\n| `a` |\n### `state`\n| `hover` |\n')
+    expect(drift(cvaAxes(source, 'v'), spec)).toEqual(['axis `state` is in the spec, not in code, and not declared in `own:`'])
+    expect(drift(cvaAxes(source, 'v'), spec, ['state'])).toEqual([])
+  })
+  it('rejects a second section for one axis, and ignores fenced and deeper-heading tables', () => {
+    expect(() => specAxes('### `size`\n| `sm` |\n### `size`\n| `xl` |\n')).toThrow(/two sections/)
+    expect(specAxes('### `size`\n| `sm` |\n```\n| `fenced` |\n```\n#### Note\n| `deeper` |\n')).toEqual({ size: ['sm'] })
   })
   it('reports a value missing from the spec, one the code lacks, and an absent axis', () => {
     const spec = specAxes('### `size`\n\n| Value |\n|---|\n| `sm` |\n| `xl` |\n\n## Usage\n| `ignored` |\n')
