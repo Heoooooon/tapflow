@@ -234,7 +234,7 @@ their count live in the spec, which the check holds to code. A component without
 | Label | `components/ui/label.tsx` | hint | [label.md](./design/components/label.md) |
 | Card | `components/ui/card.tsx` | level | [card.md](./design/components/card.md) |
 | Input | `components/ui/input.tsx` | state 3 × content 3 | [input.md](./design/components/input.md) |
-| Select | `components/ui/select.tsx` | size 4 × state 3 × content 2 | pending |
+| Select | `components/ui/select.tsx` | size 4 × state 3 × content 2 | [select.md](./design/components/select.md) |
 | Dialog | `components/ui/dialog.tsx` | footer 2 | pending |
 | Separator | `components/ui/separator.tsx` | orientation 2 | pending |
 | Badge | `components/ui/badge.tsx` | variant 10 (variant 4 + tone 6) | pending |
