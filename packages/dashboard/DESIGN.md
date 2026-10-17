@@ -175,37 +175,92 @@ Apply via the `level` prop on the `Card` component:
 | `rounded-pill-sm` | 64px | Tab ghost pills |
 | `rounded-full` | 9999px | Icon buttons, avatars |
 
+## States
+
+Every interactive component uses the same state names. A component spec lists only the states it has.
+
+| State | Trigger in code | Look |
+|-------|-----------------|------|
+| `default` | — | The variant's resting tokens |
+| `hover` | `hover:` | Defined per component — usually `--accent`, or the surface at reduced alpha |
+| `focus` | `focus-visible:` (keyboard focus) | 2px `--ring` ring outside a 2px offset filled with `--background` (`ring-offset-background`) — drawn outside the box, never changes its size. On a surface other than `--background` (a card) the offset shows as a band |
+| `disabled` | `disabled:` | 50% opacity, no pointer events |
+
+- **Pressed is motion, not a state.** Every `<button>` and `[role="button"]` that is not `disabled` shifts down 1px
+  while pressed (`translateY(1px)`, 120ms) and keeps its colors, so a pressed variant is drawn only where a
+  component adds one — `SidebarMenuButton` does (`active:bg-sidebar-accent`). The rule is global in `src/index.css`:
+
+  ```css
+  button:not([aria-haspopup]):not(:disabled),
+  [role="button"]:not([aria-haspopup]):not(:disabled) {
+    transition-property: color, background-color, border-color, transform;
+    transition-duration: 120ms;
+  }
+  button:active:not([aria-haspopup]):not(:disabled),
+  [role="button"]:active:not([aria-haspopup]):not(:disabled) {
+    transform: translateY(1px);
+  }
+  ```
+
+  Elements with `aria-haspopup` — any trigger that opens an overlay, such as DropdownMenu, Dialog and
+  AlertDialog triggers — are excluded, because the shift glitches when the overlay opens. A Select trigger has `role="combobox"` and no `aria-haspopup`, so it does shift. A `Button`
+  rendered `asChild` as a link does not, since it is neither a `<button>` nor `role="button"`.
+- **The ring is not the same everywhere.** `SidebarMenuButton` uses `--sidebar-ring` (link blue) with no offset,
+  and `SelectTrigger` uses `focus:` rather than `focus-visible:`, so a mouse click shows its ring too.
+  Read the component's base classes rather than assuming the shared ring.
+- **Disabled is not 50% everywhere.** `Label` dims to 70% when its control is disabled (`peer-disabled:opacity-70`).
+- **Error does not change a control.** Inputs have no `aria-invalid` style; the error is the message below the
+  field. Do not draw a red border.
+- **No state that the code lacks.** `selected`, `loading` and similar are drawn only once they exist in code.
+  `Card` and `Badge` are not interactive, so they have no `hover`.
+
 ## Components
 
-### Buttons
+Each component gets its own spec in [`design/components/`](./design/components/), written to one format:
+anatomy, properties (the `cva` keys, verbatim), the tokens per state, and usage. **Values come from code
+and keep their code names** — `default`, not `primary`. To rename one, change the code first.
 
-6 variants × 6 sizes. Defined in `components/ui/button.tsx`.
+`scripts/__tests__/designSpecMatchesCva.test.mjs` checks each spec's property values against the `cva`
+it names, and that every spec below is linked and exists.
 
-**Variants:**
+Axes match the Figma `Design System` page. A component with a spec lists only the axis names — the values and
+their count live in the spec, which the check holds to code. A component without a spec yet is `pending`.
 
-| Variant | Style | Use |
-|---------|-------|-----|
-| `default` | `bg-primary text-primary-foreground` | Primary CTA |
-| `destructive` | `bg-destructive/10 text-destructive` (soft) | Delete, leave actions |
-| `outline` | `border bg-background hover:bg-accent` | Secondary actions |
-| `secondary` | `bg-secondary` | Tertiary actions |
-| `ghost` | No background, hover only | Icon buttons, inline actions |
-| `link` | `text-primary underline-offset-4` | Inline link buttons |
+| Component | Source | Axes | Spec |
+|-----------|--------|------|------|
+| Button | `components/ui/button.tsx` | variant × size × state | [button.md](./design/components/button.md) |
+| Label | `components/ui/label.tsx` | hint 2 × state 2 | pending |
+| Card | `components/ui/card.tsx` | level 5 | pending |
+| Input | `components/ui/input.tsx` | state 3 × content 3 | pending |
+| Select | `components/ui/select.tsx` | size 4 × state 3 × content 2 | pending |
+| Dialog | `components/ui/dialog.tsx` | footer 2 | pending |
+| Separator | `components/ui/separator.tsx` | orientation 2 | pending |
+| Badge | `components/ui/badge.tsx` | variant 10 (variant 4 + tone 6) | pending |
+| AlertDialog | `components/ui/alert-dialog.tsx` | — | pending |
+| Tooltip | `components/ui/tooltip.tsx` | — | pending |
+| TechLabel | `components/ui/tech-label.tsx` | tone 2 | pending |
+| TabsTrigger | `components/ui/tabs.tsx` | state 4 | pending |
+| SidebarMenuButton | `components/ui/sidebar.tsx` | variant 2 × size 3 × state 5 | pending |
+| DropdownMenuItem | `components/ui/dropdown-menu.tsx` | state 3 | pending |
+| Kbd | `components/ui/kbd.tsx` | — | pending |
+| SearchInput | `components/ui/search-input.tsx` | state 3 × content 2 | pending |
+| TableRow | `components/ui/table.tsx` | type 2 × state 3 | pending |
+| Textarea | `components/ui/textarea.tsx` | state 3 × content 2 | pending |
+| Breadcrumb | `components/ui/breadcrumb.tsx` | hover 2 | pending |
+| Switch | `components/ui/switch.tsx` | checked 2 × state 3 | pending |
+| Toast | `components/ui/sonner.tsx` (`toast.*()`) | type 4 | pending |
+| Field | assembly pattern — `Label` + control + error | control 3 × hint 2 × message 2 | pending |
+| UserAvatar | `components/UserAvatar.tsx` | content 7 | pending |
 
-`destructive` uses a **soft variant** — translucent tint background with colored text, not a solid red fill.
+Not in this list on purpose: components with no call site, or reachable by no device today (`form.tsx`,
+`avatar.tsx`, `CardFooter`, `Sheet`, `DropdownMenuRadioItem`, and others). Code kept for later is not
+drawn — a designer would be drawing a screen that does not exist.
 
-**Sizes:**
+### Notes not yet moved into a spec
 
-| Size | Height | Use |
-|------|--------|-----|
-| `default` | h-10 (40px) | General buttons |
-| `sm` | h-9 (36px) | Form submit, inline actions |
-| `lg` | h-11 (44px) | Emphasized buttons, auth form submit (Login, Setup) |
-| `icon` | h-10 w-10 | Square icon buttons |
-| `pill` | h-12 (48px) + `rounded-pill` | Marketing-scale CTA |
-| `nav` | h-7 (28px) + `text-xs` | Table inline, navigation |
+These move into the component's spec file when it is written.
 
-### Cards
+#### Cards
 
 `components/ui/card.tsx` — elevation controlled via the `level` prop.
 
@@ -217,15 +272,15 @@ Apply via the `level` prop on the `Card` component:
 
 Composition: `CardHeader` (`p-6`) → `CardTitle` + `CardDescription` → `CardContent` (`p-6 pt-0`) → `CardFooter`.
 
-### Inputs & Forms
+#### Inputs & Forms
 
 `components/ui/input.tsx` — `h-10 rounded-md border border-input bg-background`. shadcn default.
 
 File upload: use the **overlay pencil button on the current image** pattern instead of a "Choose file" button. Trigger the hidden `<input type="file">` via `fileInputRef.current.click()`. Update the preview immediately on selection with `URL.createObjectURL`.
 
-### Navigation (Sidebar)
+#### Navigation (Sidebar)
 
-`components/app-sidebar.tsx` — built on shadcn `Sidebar`. Three groups:
+`components/AppSidebar.tsx` — built on shadcn `Sidebar`. Three groups:
 
 1. **Main nav**: App Center, Mac Resources
 2. **Settings** (`SidebarGroupLabel`): Default (all roles), Team (Admin), Tokens (Admin, Developer, QA) — one rule, `lib/settingsAccess.ts`, for the sidebar and the route guard
@@ -234,7 +289,7 @@ File upload: use the **overlay pencil button on the current image** pattern inst
 Header: team logo + team name, fetched from `/api/v1/settings`. Falls back to `logo.svg` + "tapflow".
 Footer: `UserAvatar` + name/email dropdown (Settings, Log out).
 
-### TechLabel
+#### TechLabel
 
 `components/ui/tech-label.tsx` — `font-mono text-xs tabular-nums tracking-tight`.
 
@@ -242,9 +297,9 @@ Footer: `UserAvatar` + name/email dropdown (Settings, Log out).
 <TechLabel>{build.buildNumber}</TechLabel>
 ```
 
-### UserAvatar
+#### UserAvatar
 
-`components/user-avatar.tsx` — renders the `avatarUrl` image if present, otherwise the first letter of the name with a hash-based color.
+`components/UserAvatar.tsx` — renders the `avatarUrl` image if present, otherwise the first letter of the name with a hash-based color.
 
 ```tsx
 <UserAvatar name={user.displayName} avatarUrl={user.avatarUrl} size={28} />
@@ -252,9 +307,9 @@ Footer: `UserAvatar` + name/email dropdown (Settings, Log out).
 
 The placeholder color is determined by `avatarColors(name)`.
 
-### Theme Toggle
+#### Theme Toggle
 
-`components/theme-toggle.tsx` — based on `next-themes` `useTheme`. Three states: light / dark / system.
+`components/ThemeToggle.tsx` — based on `next-themes` `useTheme`. A `ghost` / `icon` Button with two icons. It starts on `system` (`defaultTheme` in `src/main.tsx`), and a click only ever sets light or dark — from `system` the first click sets dark.
 
 ## Do's and Don'ts
 
@@ -295,22 +350,12 @@ Patterns locked in during implementation. Follow these in all new components and
 
 Components reference the variable only: `bg-destructive/10 text-destructive`.
 
-### Destructive Button Style
-
-Following shadcn v4: **soft variant** — translucent tint background with colored text, not a solid red fill.
-
-```
-bg-destructive/10  text-destructive  hover:bg-destructive/20
-```
-
-In dark mode, `--destructive` must be L ≥ 60% so both the `/10` background and the text color remain legible.
-
 ### Avatar Color System
 
 Name-hash-based 6-slot palette.
 
 ```ts
-// components/user-avatar.tsx
+// lib/avatar.ts
 export function avatarColors(name: string): { bg: string; fg: string }
 ```
 
@@ -337,29 +382,3 @@ Replace "Choose file" buttons with an **overlay pencil button at the bottom-righ
 ```
 
 Update the preview immediately on file selection via `URL.createObjectURL`.
-
-### Button Press Feedback
-
-A `translateY(1px)` press effect is applied globally in `index.css` base layer — not in individual components.
-
-```css
-button:not([aria-haspopup]):not(:disabled),
-[role="button"]:not([aria-haspopup]):not(:disabled) {
-  transition-property: color, background-color, border-color, transform;
-  transition-duration: 120ms;
-}
-button:active:not([aria-haspopup]):not(:disabled) {
-  transform: translateY(1px);
-}
-```
-
-Elements with `aria-haspopup` (Select, DropdownMenu triggers, etc.) are excluded to prevent visual glitches when opening overlays.
-
-### Button Size Guidelines
-
-| Context | size |
-|---------|------|
-| Form submit (Settings, etc.) | `sm` (h-9) |
-| Inline actions within a list | `sm` |
-| Navigation / table inline actions | `nav` (h-7) |
-| Primary CTA (Login, marketing, etc.) | `pill` (h-12) |

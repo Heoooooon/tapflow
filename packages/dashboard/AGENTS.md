@@ -13,6 +13,8 @@ status: living
 ## Design Reference
 
 Before any design or frontend work, read **[DESIGN.md](./DESIGN.md)** and follow the color tokens, typography, and elevation rules defined there.
+For a component that has a spec in [`design/components/`](./design/components/), read it as well — DESIGN.md's component list links each one and marks the rest `pending`.
+Changing a `cva` axis of a component with a spec means updating that spec in the same change; `scripts/__tests__/designSpecMatchesCva.test.mjs` fails until you do. A `pending` component has nothing to update.
 
 ## WHAT
 

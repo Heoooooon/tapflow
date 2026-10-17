@@ -65,6 +65,7 @@ const EXEMPT = [
   /(^|\/)dist\//,
   /(^|\/)\.(gitignore|env[^/]*)$/,
   /(^|\/)(README|LICENSE|CHANGELOG|AGENTS|CLAUDE|DESIGN)(\.md)?$/i,
+  /^packages\/dashboard\/design\/.+\.md$/,           // component specs beside DESIGN.md — prose, never bundled
   /(^|\/)(tsconfig[^/]*\.json|vitest\.config\.[^/]+|eslint\.config\.[^/]+|\.npmignore)$/,
 ]
 

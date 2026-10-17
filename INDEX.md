@@ -39,7 +39,7 @@ Common rules are in the root [AGENTS.md](./AGENTS.md).
 | File | Contents |
 |------|----------|
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | Branch, release, and commit conventions |
-| [packages/dashboard/DESIGN.md](./packages/dashboard/DESIGN.md) | Dashboard design system — color tokens, typography, elevation, component specs |
+| [packages/dashboard/DESIGN.md](./packages/dashboard/DESIGN.md) | Dashboard design system — tokens, shared state rules, and the component list linking each spec in `design/components/` |
 | [packages/ios-agent/netprobe/README.md](./packages/ios-agent/netprobe/README.md) | The network probe app — what it reports, why the reachability getter and listener are two separate lines, and how to arm layer 2 by hand |
 | [packages/ios-agent/ios-netfilter/README.md](./packages/ios-agent/ios-netfilter/README.md) | The macOS network-filter system extension — why a content filter and not a transparent proxy, the container app's exit codes, and building it (paid Apple account, notarization, the load-bearing `CFBundleVersion` bump) |
 | [.internal/PRD.md](./.internal/PRD.md) | Product requirements (local only) |

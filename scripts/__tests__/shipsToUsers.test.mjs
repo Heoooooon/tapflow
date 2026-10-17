@@ -50,6 +50,7 @@ describe('shipsToUsers — files that change nothing a user can observe', () => 
     // Prose.
     'packages/relay/README.md',
     'packages/dashboard/DESIGN.md',
+    'packages/dashboard/design/components/button.md',
     'packages/ios-agent/AGENTS.md',
     'packages/agent-core/CHANGELOG.md',
     // Packages that are never published.
