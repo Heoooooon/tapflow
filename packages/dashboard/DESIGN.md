@@ -196,7 +196,8 @@ Every interactive component uses the same state names. A component spec lists on
     transition-property: color, background-color, border-color, transform;
     transition-duration: 120ms;
   }
-  button:active:not([aria-haspopup]):not(:disabled) {
+  button:active:not([aria-haspopup]):not(:disabled),
+  [role="button"]:active:not([aria-haspopup]):not(:disabled) {
     transform: translateY(1px);
   }
   ```

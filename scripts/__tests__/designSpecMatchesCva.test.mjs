@@ -11,8 +11,8 @@ import ts from 'typescript'
 // appear as a `### \`axis\`` heading whose table lists exactly the same values. An axis that is not in
 // `cva` (`state` is CSS, not a prop) must be declared in `own:` — otherwise an axis deleted from code would
 // stay documented, green. A component whose source has no `cva` with variants for it says `cva: none`, and
-// every axis it has is its own — but an `own:` axis that some `cva` in that source does define is an error,
-// so `none` cannot be used to opt a real cva axis out of the comparison.
+// every axis it has is its own. `none` cannot opt a real cva out: it fails when the component's own cva
+// (`Button` → `buttonVariants`) has variants, or when an `own:` axis is defined by any cva in that source.
 //
 // Reading nothing must fail, not pass. A `cva` name that no longer exists, or a refactor that moves the
 // variants somewhere this cannot see, would otherwise compare an empty set to whatever the spec says
@@ -23,6 +23,7 @@ const root = join(import.meta.dirname, '../..')
 const dashboard = join(root, 'packages/dashboard')
 const specDir = join(dashboard, 'design/components')
 
+const isCvaCall = (n) => ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === 'cva'
 const nameOf = (n) => (ts.isIdentifier(n) || ts.isStringLiteral(n) || ts.isNumericLiteral(n) ? n.text : null)
 
 /** `{ axis: [values] }` from `const <cvaName> = cva(base, { variants: { … } })`. Throws if not found. */
@@ -30,7 +31,7 @@ export function cvaAxes(sourceText, cvaName) {
   const sf = ts.createSourceFile('x.tsx', sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
   let found = null
   const visit = (n) => {
-    if (ts.isVariableDeclaration(n) && nameOf(n.name) === cvaName && n.initializer && ts.isCallExpression(n.initializer)) {
+    if (ts.isVariableDeclaration(n) && nameOf(n.name) === cvaName && n.initializer && isCvaCall(n.initializer)) {
       const config = n.initializer.arguments[1]
       if (config && ts.isObjectLiteralExpression(config)) {
         const variants = config.properties.find((p) => ts.isPropertyAssignment(p) && nameOf(p.name) === 'variants')
@@ -54,25 +55,46 @@ export function cvaAxes(sourceText, cvaName) {
   }
   visit(sf)
   if (!found || Object.keys(found).length === 0 || Object.values(found).some((v) => v.length === 0)) {
-    throw new Error(`no cva variants found for \`${cvaName}\``)
+    throw new Error(`no cva variants found for \`${cvaName}\` — it must be assigned a \`cva(base, { variants })\` call`)
   }
   return found
 }
 
-/** Every axis name any `cva(…, { variants })` in the source defines, readable or not. */
-export function anyCvaAxisNames(sourceText) {
-  const names = new Set()
+/**
+ * Every `const <name> = cva(…)` in the source that has a `variants` entry, as name → its axis names
+ * (readable or not — an unreadable entry still means the cva has variants).
+ */
+export function cvaWithVariants(sourceText) {
+  const found = new Map()
   const visit = (n) => {
-    const config = ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === 'cva' && n.arguments[1]
+    const config = ts.isVariableDeclaration(n) && n.initializer && isCvaCall(n.initializer) && n.initializer.arguments[1]
     const variants = config && ts.isObjectLiteralExpression(config) &&
       config.properties.find((p) => ts.isPropertyAssignment(p) && nameOf(p.name) === 'variants')
-    if (variants && ts.isObjectLiteralExpression(variants.initializer)) {
-      for (const axis of variants.initializer.properties) if (axis.name && nameOf(axis.name)) names.add(nameOf(axis.name))
+    if (variants) {
+      const axes = ts.isObjectLiteralExpression(variants.initializer)
+        ? variants.initializer.properties.map((a) => (a.name ? nameOf(a.name) : null)).filter(Boolean) : []
+      found.set(nameOf(n.name), new Set(axes))
     }
     ts.forEachChild(n, visit)
   }
   visit(ts.createSourceFile('x.tsx', sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX))
-  return names
+  return found
+}
+
+/** The cva a component owns, by the shadcn convention: `Button` → `buttonVariants`. */
+export const ownedCvaName = (component) => `${component[0].toLowerCase()}${component.slice(1)}Variants`
+
+/**
+ * Why a `cva: none` spec is wrong, or null. `none` is for a component with no cva of its own — not a way
+ * to opt a real one out. So it fails when the component's own cva has variants, or when an `own:` axis is
+ * defined by any cva in the file. A cva-less component sharing a file with another's cva stays valid.
+ */
+export function noneViolation(sourceText, component, ownAxes) {
+  const all = cvaWithVariants(sourceText)
+  const owned = ownedCvaName(component)
+  if (all.has(owned)) return `\`cva: none\` but \`${owned}\` has variants — name it in \`cva:\``
+  const real = ownAxes.filter((a) => [...all.values()].some((axes) => axes.has(a)))
+  return real.length ? `\`cva: none\` but a cva in the source defines ${real.join(', ')}` : null
 }
 
 /** `{ axis: [values] }` from each `### \`axis\`` heading and the first column of the table below it. */
@@ -126,15 +148,13 @@ describe('component specs match the cva they name', () => {
   for (const file of specs) {
     it(file, () => {
       const md = readFileSync(join(specDir, file), 'utf8')
-      const { source, cva, own = '' } = frontmatter(md)
+      const { component, source, cva, own = '' } = frontmatter(md)
+      expect(component, `${file}: frontmatter needs \`component\``).toBeTruthy()
       expect(source, `${file}: frontmatter needs \`source\``).toBeTruthy()
       expect(cva, `${file}: frontmatter needs \`cva\` (or \`cva: none\`)`).toBeTruthy()
       const text = readFileSync(join(dashboard, source), 'utf8')
       const ownAxes = own.split(/[\s,]+/).filter(Boolean)
-      if (cva === 'none') {
-        const real = ownAxes.filter((a) => anyCvaAxisNames(text).has(a))
-        expect(real, `${file}: \`cva: none\` but a cva in ${source} defines these`).toEqual([])
-      }
+      if (cva === 'none') expect(noneViolation(text, component, ownAxes), file).toBeNull()
       const code = cva === 'none' ? {} : cvaAxes(text, cva)
       expect(drift(code, specAxes(md), ownAxes)).toEqual([])
     })
@@ -174,9 +194,19 @@ describe('the check itself', () => {
     expect(drift(cvaAxes(source, 'v'), spec)).toEqual(['axis `state` is in the spec, not in code, and not declared in `own:`'])
     expect(drift(cvaAxes(source, 'v'), spec, ['state'])).toEqual([])
   })
-  it('finds the cva axes a `cva: none` spec could otherwise hide', () => {
+  it('does not take a different factory for cva', () => {
+    expect(() => cvaAxes(`const v = tv('b', { variants: { size: { sm: '' } } })`, 'v')).toThrow(/no cva variants/)
+  })
+  it('refuses `cva: none` for a component whose own cva has variants, even with no `own:` axis', () => {
+    const button = `const buttonVariants = cva('b', { variants: { variant: { default: '' }, size: { sm: '' } } })`
+    expect(noneViolation(button, 'Button', ['state'])).toMatch(/buttonVariants/)
     const card = `const cardVariants = cva('b', { variants: { level: { 1: '', 2: '' } } })\nconst l = cva('x')`
-    expect([...anyCvaAxisNames(card)]).toEqual(['level'])
+    expect(noneViolation(card, 'Label', ['level'])).toMatch(/defines level/)
+  })
+  it('allows `cva: none` for a cva-less component sharing a file with another cva', () => {
+    const sidebar = `const sidebarMenuButtonVariants = cva('b', { variants: { size: { sm: '' } } })`
+    expect(noneViolation(sidebar, 'SidebarGroup', [])).toBeNull()
+    expect(noneViolation(`const labelVariants = cva('x')`, 'Label', ['hint'])).toBeNull()
   })
   it('rejects a second section for one axis, and ignores fenced and deeper-heading tables', () => {
     expect(() => specAxes('### `size`\n| `sm` |\n### `size`\n| `xl` |\n')).toThrow(/two sections/)
