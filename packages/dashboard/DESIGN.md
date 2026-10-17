@@ -24,7 +24,7 @@ All color values are defined as CSS variables in `src/index.css`. Tailwind refer
 | Token | Light | Dark | Use |
 |-------|-------|------|-----|
 | `--background` | `#fafafa` | `#171717` | Page background |
-| `--card` | `#ffffff` | `#1c1c1c` | Card, popover, dialog surface |
+| `--card` / `--popover` | `#ffffff` | `#1c1c1c` | Card surface; `--popover` (same values) for Select and DropdownMenu content. Dialog and AlertDialog use `--background` |
 | `--secondary` / `--muted` / `--accent` | `#f5f5f5` | `#262626` | Inset regions, hover backgrounds |
 
 ### Text
@@ -139,8 +139,8 @@ Default card padding: `p-6` (24px). Dense contexts: `p-4` (16px). Sidebar areas:
 |----------------|-------|-----|
 | `z-sidebar` | 10 | Sidebar |
 | `z-tooltip` | 100 | Tooltips |
-| `z-overlay` | 200 | Modal dim background |
-| `z-modal` | 300 | Modal / dialog content |
+| `z-overlay` | 200 | Modal dim background — **defined, used nowhere**; Dialog and AlertDialog use `z-50` |
+| `z-modal` | 300 | Modal / dialog content — **defined, used nowhere**; Dialog and AlertDialog use `z-50` |
 
 ## Elevation & Depth
 
@@ -235,7 +235,7 @@ their count live in the spec, which the check holds to code. A component without
 | Card | `components/ui/card.tsx` | level | [card.md](./design/components/card.md) |
 | Input | `components/ui/input.tsx` | state 3 × content 3 | [input.md](./design/components/input.md) |
 | Select | `components/ui/select.tsx` | size 4 × state 3 × content 2 | [select.md](./design/components/select.md) |
-| Dialog | `components/ui/dialog.tsx` | footer 2 | pending |
+| Dialog | `components/ui/dialog.tsx` | footer 2 | [dialog.md](./design/components/dialog.md) |
 | Separator | `components/ui/separator.tsx` | orientation 2 | pending |
 | Badge | `components/ui/badge.tsx` | variant 10 (variant 4 + tone 6) | pending |
 | AlertDialog | `components/ui/alert-dialog.tsx` | — | pending |

@@ -38,8 +38,8 @@ the same row.
 - **Content** — `--popover` surface, `--popover-foreground` text, 1px `--border`, `rounded-md`, Tailwind
   `shadow-md` (not a `shadow-card-*` token). At least as wide as the trigger and never narrower than 128px; it
   grows to fit its longest item, aligned to the trigger's left edge, so extra width extends to the right. 4px
-  padding inside. Opens 4px below the trigger (above when there is no room), fading in, scaling from 95% and
-  sliding 8px from the trigger's side. A list taller than the space available scrolls, with a 16px chevron
+  padding inside. Opens 4px below the trigger (above when there is no room) in 150ms: fades, scales from 95% and
+  slides 8px from the trigger's side (instant with reduced motion). A list taller than the space available scrolls, with a 16px chevron
   button at the top and bottom.
 - **Item** — `text-sm`, 6px top and bottom, 32px left padding (room for the check), 8px right, `rounded-sm` (4px).
   Always 14px, even when the trigger is set to 12px.
