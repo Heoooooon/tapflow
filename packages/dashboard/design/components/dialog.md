@@ -27,10 +27,12 @@ its buttons, not a prop. A confirmation that asks "are you sure?" is `AlertDialo
   24px padding on every side
 ```
 
-- **Overlay** — black at 80% over the whole page, in both themes. Fades in.
+- **Overlay** — black at 80% over the whole page, in both themes. Appears instantly.
 - **Panel** — `--background` fill (not `--card` or `--popover`), 1px `--border`, `rounded-lg` (8px), Tailwind
   `shadow-lg` (not a `shadow-card-*` token), 24px padding. Centered in the viewport. Children are stacked
-  16px apart (`grid gap-4`). Opens in 200ms: fades, scales from 95% and slides in slightly from above.
+  16px apart (`grid gap-4`). **It appears and disappears instantly.** The `animate-in` / `fade-*` / `zoom-*` /
+  `slide-*` classes in the source come from shadcn and need the `tailwindcss-animate` plugin, which is not
+  installed (`plugins: []` in `tailwind.config.ts`), so they produce no CSS. Do not prototype an open animation.
 - **Title** — `text-lg` (18px) `font-semibold leading-none tracking-tight`, `--foreground`. Required on every
   dialog; the deeplink bar hides it visually (`sr-only`).
 - **Description** (optional) — `text-sm`, `--muted-foreground`. 2 of 7 dialogs.
@@ -54,7 +56,8 @@ at desktop width, where the header is left-aligned and the corners are 8px.
 
 Call-site counts are a snapshot (2026-10-18). `stacked` is what a form dialog does: fields, then the submit
 button stretched to the panel's width. A dialog whose form is replaced by a result (the invite link, the new
-token, the reset link) keeps the same shape — the copy field, then one full-width button (`Done`, `Copy & close`).
+token, the reset link) keeps the same shape — the copy field, then one full-width button (`Done`, `Copy & close`),
+12px apart (`gap-3`) where the form's fields are 16px apart (`gap-4`).
 
 `DialogFooter` is used once. `stacked` and `end` are plain `div`s or the `<form>` itself, which is why the
 Figma set's `footer` axis (with / without) does not describe what ships.
@@ -70,7 +73,11 @@ specs.
 | Add App | `sm:max-w-sm` (384px) | Three short fields |
 | Streaming in Standard mode | `sm:max-w-[440px]`; description split into two paragraphs 12px apart, with 4px more above it (`pt-1`) | A notice, not a form |
 | Open deeplink | 500px × 52px bar, `rounded-[18px]`, 10px padding, Close hidden (`[&>button]:hidden`), title `sr-only` | A command bar (⌘K), not a dialog-shaped panel |
-| Form bodies | `pt-2` on the form | Adds 8px, so fields start 24px under the title |
+
+Inside the deeplink bar: a borderless, unfilled field (16px search icon in `--muted-foreground`, 8px gap,
+`text-sm`, placeholder `myapp://home...`) in a 32px row, then 12px, then the `Open` button at `size="sm"`
+overridden to 32px high, 16px side padding and `rounded-xl` (12px).
+| Form and result bodies | `pt-2` | Adds 8px, so the body starts 24px under the title |
 
 The deeplink bar is the one dialog that does not look like a dialog. Draw it from the overrides above, not from
 the panel.
@@ -83,18 +90,21 @@ the panel.
 - Do not add a Cancel button to a `stacked` dialog. Close (✕), Escape and a click on the overlay all dismiss it.
 - When a form is replaced by its result, keep the panel and the title; swap the body only.
 - **Open it from a `DialogTrigger`, or return focus yourself.** Radix puts focus back on the trigger when the
-  dialog closes. Opened from a plain `onClick` there is no trigger, so focus drops to the page unless the call site
+  dialog closes. Opened from a plain `onClick`, a shortcut or on mount there is no trigger, so focus drops to the page unless the call site
   passes `onCloseAutoFocus` (Password reset link does). Two dialogs do neither today (tracked in #979).
 
 ## Dialog vs AlertDialog
 
-They share the panel, overlay, width and motion. Exactly three things differ:
+They share the panel, overlay and width. What differs:
 
 | | Dialog | AlertDialog |
 |---|---|---|
 | Header spacing | 6px (`space-y-1.5`) | 8px (`space-y-2`) |
 | Title | `text-lg font-semibold leading-none tracking-tight` | `text-lg font-semibold` |
-| Close (✕) | Yes | No — it closes only through its buttons or Escape |
+| Close (✕) | Yes | No — it closes only through its buttons or Escape, not on an overlay click |
+| Focus on open | First focusable element | Cancel |
+| Buttons below 640px | `DialogFooter` stacks them with no gap | Cancel carries `mt-2`, so they sit 8px apart |
+| Role | `dialog` | `alertdialog` |
 
 ## Figma
 
