@@ -57,7 +57,10 @@ export function DashboardLayout() {
         <AppSidebar />
         <SidebarInset>
           <DashboardHeader />
-          <main className="flex-1 min-h-0 overflow-auto">
+          {/* `relative` makes this scroller the containing block of every absolute element in a page. Without it
+              they resolved to SidebarInset, outside the scroller, so an `sr-only` live region near the bottom of a
+              long page (FormErrorCount) stretched the document and the window grew a second scrollbar. */}
+          <main className="relative flex-1 min-h-0 overflow-auto">
             {/* Outlet-level Suspense so lazy page chunks load without unmounting the sidebar/header. */}
             <Suspense fallback={<div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">Loading…</div>}>
               <Outlet />
