@@ -24,8 +24,11 @@ text      hint (optional)
 
 - **Text** — `text-sm font-medium leading-none`, `--foreground`. Single line.
 - **Hint** (optional) — an inline `<span>` inside the label, after one space: `text-xs`, `--muted-foreground`,
-  in parentheses. It sits on the same line as the text. **There is no hint line under the control** — no call
-  site renders one.
+  in parentheses. It sits on the same line as the text.
+
+A standing instruction *under* the control is not part of Label. It is `FieldHint`
+(`components/ui/field-hint.tsx`, `text-sm --muted-foreground`, 6 call sites) and belongs to the Field assembly —
+see the Field row in DESIGN.md.
 
 Label is not interactive. It has no `hover`, `focus` or `disabled` look of its own; clicking it moves focus to
 the control it names (`htmlFor`).
@@ -45,8 +48,8 @@ inconsistency, not a second size.
 
 ## No disabled state
 
-The base class carries `peer-disabled:opacity-70`, which dims the label when a **preceding** sibling with the
-`peer` class is disabled. No call site has that shape: the only control with `peer` is `Switch`, and its one
+The base class carries `peer-disabled:opacity-70` and `peer-disabled:cursor-not-allowed`, which apply when a
+**preceding** sibling with the `peer` class is disabled. No call site has that shape: the only control with `peer` is `Switch`, and its one
 labelled use (Full reset, `src/pages/QASession.tsx`) puts the Label before the Switch. So the 70% never
 renders. Do not draw a disabled Label; a disabled field is shown by its control alone.
 
@@ -56,9 +59,11 @@ renders. Do not draw a disabled Label; a disabled field is shown by its control 
   focus the control.
 - A label for something that is not a single labellable control (an avatar picker, a slider group) has no
   `htmlFor`. Give it an `id` and point the control at it with `aria-labelledby`, as `VideoStorageCard` does.
-  A label with neither names nothing.
-- Above a control the label sits in the field assembly (`Label` + control + error, `gap-2`). See the Field
-  row in DESIGN.md.
+  A label with neither names nothing — and five call sites are like that today (the avatar and logo pickers,
+  and the two labels in `UploadBuildDialog`), so do not read the code as following this yet.
+- Above a control the label sits in the field assembly: `Label` + control + `FieldHint` or error, `gap-2` (28 of
+  33). The outliers are `AddAppDialog` (`gap-1.5`, 3) and `VideoStorageCard` (`gap-3`, 2, where the label shares
+  a row with the slider's value). See the Field row in DESIGN.md.
 - Do not restyle the text per screen. The one override in code (`text-sm cursor-pointer whitespace-nowrap`
   on Full reset) keeps the same size and only stops the toolbar label wrapping.
 
