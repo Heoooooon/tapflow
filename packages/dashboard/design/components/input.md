@@ -69,7 +69,7 @@ These are `className` overrides, not props.
 | Where | Override | Why |
 |-------|----------|-----|
 | Read-only copy fields (invite or reset link, API token, agent command, `tapflow admin init`) — 4 | `readOnly` + `font-mono` | A value to copy, not to type; focusing it selects all |
-| Run detail suggested line — 1 | `readOnly` + `h-7 font-mono` | The same, inline in a step row at 28px |
+| Run detail suggested line — 1 | `readOnly` + `h-7 min-w-0 font-mono` | The same, inline in a step row at 28px; `min-w-0` lets it shrink beside its Copy button on a narrow screen |
 | `SearchInput` | `h-8 pl-8`, `w-48` by default | 32px search box with the icon in the left padding |
 
 A read-only field looks the same as an editable one apart from the font: monospace at the same size (14px on
