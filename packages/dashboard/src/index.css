@@ -165,10 +165,11 @@
 
 /* Overlays (dialogs, menus, selects, tooltips, sheets) open and close with tailwindcss-animate. Someone who asked
    the OS for less motion gets them instantly. `none` rather than a zero duration: Radix keeps an exiting overlay
-   mounted until its animation ends, and with no animation name it unmounts at once. */
+   mounted until its animation ends, and with no animation name it unmounts at once. A substring match because the
+   components write `data-[state=open]:animate-in`, a different class from the bare `animate-in` only Tooltip uses. */
 @media (prefers-reduced-motion: reduce) {
-  .animate-in,
-  .animate-out {
+  [class*="animate-in"],
+  [class*="animate-out"] {
     animation: none !important;
   }
 }

@@ -55,13 +55,13 @@ export function UploadBuildDialog({ onSuccess, appId, canWrite }: Props) {
     })
 
     setOpen(false)
-    setFile(null)
-    setStatusLabel('none')
   }
 
   function handleOpenChange(next: boolean) {
     setOpen(next)
-    if (!next) { setFile(null); setStatusLabel('none') }
+    // Cleared on the way in, not on the way out: a closing dialog stays on screen through its exit animation,
+    // and clearing it then showed the empty drop zone fading out in place of what was just issued.
+    if (next) { setFile(null); setStatusLabel('none') }
   }
 
   // Viewer keeps a focusable, named button whose press explains the refusal — see AddAppDialog.

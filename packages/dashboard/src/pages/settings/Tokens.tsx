@@ -129,7 +129,9 @@ export function TokenSettings() {
 
   function handleDialogClose(o: boolean) {
     setOpen(o)
-    if (!o) { setNewToken(''); setTokenType('api'); setAgentWsBase(''); setDialogStatus(''); reset() }
+    // Cleared on the way in, not on the way out: a closing dialog stays on screen through its exit animation,
+    // and clearing it then showed the empty form fading out in place of what was just issued.
+    if (o) { setNewToken(''); setTokenType('api'); setAgentWsBase(''); setDialogStatus(''); reset() }
   }
 
   async function handleRevoke(id: number): Promise<boolean> {
