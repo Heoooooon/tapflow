@@ -68,16 +68,13 @@ These are `className` overrides, not props.
 
 | Where | Override | Why |
 |-------|----------|-----|
-| Read-only copy fields (invite or reset link, API token, agent command, `tapflow admin init`) — 4 | `readOnly` + `font-mono text-xs` | A value to copy, not to type; focusing it selects all |
-| Run detail suggested line — 1 | `readOnly` + `h-7 font-mono text-xs` | The same, inline in a step row at 28px |
+| Read-only copy fields (invite or reset link, API token, agent command, `tapflow admin init`) — 4 | `readOnly` + `font-mono` | A value to copy, not to type; focusing it selects all |
+| Run detail suggested line — 1 | `readOnly` + `h-7 font-mono` | The same, inline in a step row at 28px |
 | `SearchInput` | `h-8 pl-8`, `w-48` by default | 32px search box with the icon in the left padding |
 
-**The read-only fields render at 14px, not 12px, on the dashboard.** `text-xs` replaces `text-base`, but
-`md:text-sm` from the base class is a different variant and survives the merge, so from 768px up it wins. Draw
-them as 14px monospace, which is what ships. The `text-xs` is effectively a mobile-only size; whether the
-read-only fields should be 12px everywhere is a code change, not a drawing one.
-
-A read-only field looks the same as an editable one apart from the font: same border, same fill, same ring.
+A read-only field looks the same as an editable one apart from the font: monospace at the same size (14px on
+the dashboard), same border, same fill, same ring. Do not shrink it: a size override would have to beat
+`md:text-sm` too, and the `text-xs` these fields used to carry did not — it applied only below 768px.
 The invite or reset link and the new API token take focus as they appear (`Team.tsx`, `Tokens.tsx`), and focus
 selects the whole value, so they are first seen with the ring on and the text all selected — the browser's
 selection color, not a token of ours. Draw them in that state.
@@ -95,5 +92,4 @@ selection color, not a token of ours. Draw them in that state.
 ## Figma
 
 Component set **Input** (`63:123`) in the `Design System` page — `state` × `content`, 9 variants. The Figma
-value names were not checked against this spec, and its read-only variant (if drawn at 12px) differs from what
-ships.
+value names were not checked against this spec. A read-only variant drawn at 12px is out of date: it is 14px.

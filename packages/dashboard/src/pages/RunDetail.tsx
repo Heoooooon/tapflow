@@ -191,7 +191,7 @@ function SuggestionLine({ yaml, n, stepName }: { yaml: string; n: number; stepNa
     <span className="flex items-center gap-2">
       <Input
         ref={field} readOnly value={yaml} aria-label={`Suggested line ${n} for ${stepName}`}
-        onFocus={(e) => e.currentTarget.select()} className="h-7 font-mono text-xs"
+        onFocus={(e) => e.currentTarget.select()} className="h-7 font-mono"
       />
       <Button
         type="button" size="sm" variant="outline" className="h-7" aria-label={`Copy suggested line ${n}`}

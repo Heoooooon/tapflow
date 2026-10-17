@@ -86,7 +86,7 @@ export function Setup() {
                 </p>
                 {/* A field rather than text, so a keyboard user can select it. No copy button: this page
                     is not on localhost, and over plain HTTP the clipboard API is not available. */}
-                <Input readOnly value="tapflow admin init" aria-labelledby="setup-remote-command" onFocus={(e) => e.currentTarget.select()} className="font-mono text-xs" />
+                <Input readOnly value="tapflow admin init" aria-labelledby="setup-remote-command" onFocus={(e) => e.currentTarget.select()} className="font-mono" />
                 {/* Not "open it at localhost": through Docker's bridge gateway that is not local either, and
                     the relay-only image has no CLI, so the variables are the only way in there. */}
                 <p className="text-sm text-muted-foreground">
