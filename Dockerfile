@@ -35,6 +35,8 @@ RUN npm install -g pnpm@9.15.1
 
 # Copy workspace configuration and lockfile
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+# `pnpm.patchedDependencies` in package.json names these; a frozen install fails without them.
+COPY patches ./patches
 
 # Copy all packages for building and workspace resolution
 COPY packages ./packages
