@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss'
+import animate from 'tailwindcss-animate'
 
 const config: Config = {
   darkMode: ['class'],
@@ -103,7 +104,9 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  // The `animate-in` / `fade-*` / `zoom-*` / `slide-*` classes in components/ui (shadcn) are this plugin's.
+  // Without it they compiled to nothing and every overlay appeared and vanished with no motion.
+  plugins: [animate],
 }
 
 export default config
