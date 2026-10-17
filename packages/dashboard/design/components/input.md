@@ -68,7 +68,7 @@ These are `className` overrides, not props.
 
 | Where | Override | Why |
 |-------|----------|-----|
-| Read-only copy fields (invite link, API token, agent command, `tapflow admin init`) — 4 | `readOnly` + `font-mono text-xs` | A value to copy, not to type; focusing it selects all |
+| Read-only copy fields (invite or reset link, API token, agent command, `tapflow admin init`) — 4 | `readOnly` + `font-mono text-xs` | A value to copy, not to type; focusing it selects all |
 | Run detail suggested line — 1 | `readOnly` + `h-7 font-mono text-xs` | The same, inline in a step row at 28px |
 | `SearchInput` | `h-8 pl-8`, `w-48` by default | 32px search box with the icon in the left padding |
 
@@ -78,6 +78,9 @@ them as 14px monospace, which is what ships. The `text-xs` is effectively a mobi
 read-only fields should be 12px everywhere is a code change, not a drawing one.
 
 A read-only field looks the same as an editable one apart from the font: same border, same fill, same ring.
+The invite or reset link and the new API token take focus as they appear (`Team.tsx`, `Tokens.tsx`), and focus
+selects the whole value, so they are first seen with the ring on and the text all selected — the browser's
+selection color, not a token of ours. Draw them in that state.
 
 ## Usage
 
@@ -86,8 +89,8 @@ A read-only field looks the same as an editable one apart from the font: same bo
   an `aria-label`. A placeholder is not a name — it disappears once something is typed.
 - An Input sits in the field assembly: `Label`, Input, then `FieldHint` or `FieldError` under it. See the Field
   row in DESIGN.md and [label.md](./label.md).
-- Do not restyle the box per screen. The overrides above change font and height only; no call site changes the
-  border, fill or radius.
+- Do not restyle the box per screen. The overrides above change font and height, and `SearchInput` also its left
+  padding and width; no call site changes the border, fill or radius.
 
 ## Figma
 

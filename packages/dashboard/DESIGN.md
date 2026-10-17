@@ -206,7 +206,8 @@ Every interactive component uses the same state names. A component spec lists on
   AlertDialog triggers — are excluded, because the shift glitches when the overlay opens. A Select trigger has `role="combobox"` and no `aria-haspopup`, so it does shift. A `Button`
   rendered `asChild` as a link does not, since it is neither a `<button>` nor `role="button"`.
 - **The ring is not the same everywhere.** `SidebarMenuButton` uses `--sidebar-ring` (link blue) with no offset,
-  and `SelectTrigger` uses `focus:` rather than `focus-visible:`, so a mouse click shows its ring too.
+  and `SelectTrigger` uses `focus:` rather than `focus-visible:`, so a mouse click shows its ring too. A text `Input`
+  shows it on a click as well: browsers match `:focus-visible` on any focused text field (see [input.md](./design/components/input.md)).
   Read the component's base classes rather than assuming the shared ring.
 - **A disabled field is shown by its control alone.** `Label` carries `peer-disabled:opacity-70`, but no call site
   puts a `peer` control before its label, so it never applies. See [label.md](./design/components/label.md).
