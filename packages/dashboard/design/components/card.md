@@ -44,7 +44,9 @@ cva: cardVariants
 | `3` | `shadow-card-3` — stacked 2px and 8px drop + hairline | 0 | Defined, not used |
 | `4` | `shadow-card-4` — float stack, 16px blur + hairline | 6 | The one card on an entry screen: Login, Setup, Invite, Reset password |
 
-Call-site counts are a snapshot (2026-10-17). The App Center release list also draws a level-2 surface without
+Call-site counts are a snapshot (2026-10-17). Login and Setup put a logo lockup 24px above the card (24px logo,
+`tapflow` in `text-base font-semibold`); Invite and Reset password have none. The lockup is part of the page, not
+the card. The App Center release list also draws a level-2 surface without
 `Card` (`ReleaseAccordion.tsx:40`, `rounded-lg shadow-card-2` on a plain `div`), so it looks like a card but is not
 one. Only `2` and `4` are in use, so a screen is either the settings
 pattern (several `2` cards on the page background) or the entry pattern (one centered `4` card).
@@ -64,8 +66,9 @@ These are `className` overrides, not props. They change layout, not the look of 
 
 | Where | Override | Why |
 |-------|----------|-----|
-| Entry screens (Login, Setup, Invite, Reset password) | Card `w-full`, `max-w-sm` on four | One narrow card, centered by the page |
-| Invite and Reset password result cards | `text-center` on Card and CardHeader | A status message with no form |
+| Entry screens (Login, Setup, Invite, Reset password) | Card `w-full`; 384px wide (`max-w-sm`) on all six — on the card itself, or on the wrapper for Login and Setup | One narrow card, centered by the page |
+| Entry screens with a form (four) | CardHeader `text-center` | Title and description centered over a left-aligned form |
+| Invite and Reset password result cards (two) | Card `text-center` | A status message with no form, all of it centered |
 | Login, Setup | CardTitle `tracking-display-md` (-0.96px) | Display tracking on the two entry titles; every other title keeps `tracking-tight` |
 | Members (Team), Tokens | CardContent `px-4 pt-0 pb-2` | The content is a table, which brings its own cell padding |
 
@@ -74,8 +77,9 @@ These are `className` overrides, not props. They change layout, not the look of 
 - Use `level={2}` (or omit it) for sections on a page, and `level={4}` for the single card of an entry screen.
   Levels 0, 1 and 3 exist in code but no screen uses them yet.
 - One title per card. The title names the section; do not repeat it as a heading inside CardContent.
-- A list or table in a card uses the dense CardContent padding above, so the table's own padding lines up with
-  the header's 24px.
+- A list or table in a card uses the dense CardContent padding above (16px), and the table cells add their own
+  16px, so table text starts 32px in while the title starts at 24px. That offset is how it renders today — draw
+  it as is.
 
 ## Figma
 
