@@ -13,6 +13,8 @@ status: living
 ## Design Reference
 
 Before any design or frontend work, read **[DESIGN.md](./DESIGN.md)** and follow the color tokens, typography, and elevation rules defined there.
+For a component, read its spec in [`design/components/`](./design/components/) as well — DESIGN.md links each one.
+Changing a `cva` axis means updating that spec in the same change; `scripts/__tests__/designSpecMatchesCva.test.mjs` fails until you do.
 
 ## WHAT
 
