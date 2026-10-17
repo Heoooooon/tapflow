@@ -105,7 +105,7 @@ Mono is for the technical layer only — code blocks, `build_number`, `bundle_id
 |----------------|-------|----------|
 | `tracking-display-xl` | `-2.4px` | Hero-level headings |
 | `tracking-display-lg` | `-1.28px` | Section headings |
-| `tracking-display-md` | `-0.96px` | Card titles (Login, etc.) |
+| `tracking-display-md` | `-0.96px` | Login and Setup card titles |
 | `tracking-display-sm` | `-0.6px` | Small display headings |
 | `tracking-body-sm` | `-0.28px` | Small body text |
 | `tracking-tight` | Tailwind default | Sidebar team name, TechLabel |
@@ -114,7 +114,7 @@ Mono is for the technical layer only — code blocks, `build_number`, `bundle_id
 
 | Element | Classes | Use |
 |---------|---------|-----|
-| Card title | `text-2xl font-semibold tracking-display-md` | Login "Welcome back", settings section titles |
+| Card title | `text-2xl font-semibold leading-none tracking-tight` | Every `CardTitle`. Login and Setup override it to `tracking-display-md` |
 | Body emphasis | `text-sm font-medium` | Navigation labels, buttons |
 | Secondary text | `text-sm text-muted-foreground` | Card descriptions, captions |
 | Technical label | `font-mono text-xs tabular-nums tracking-tight` | `build_number`, `bundle_id` (`TechLabel` component) |
@@ -148,12 +148,12 @@ Card hierarchy is expressed only through `shadow-card-{n}` tokens. All shadows f
 
 | Level | Tailwind class | Shadow | Use |
 |-------|----------------|--------|-----|
-| 0 | (none) | none | Full-bleed regions, sidebar |
-| 1 | `shadow-card-1` | inset 1px hairline | Flat cards that only need a boundary |
-| 2 | `shadow-card-2` | soft drop + inset | **Default** — most cards |
-| 3 | `shadow-card-3` | stacked drop + inset | Feature cards, emphasis panels |
-| 4 | `shadow-card-4` | float stack + inset | Primary cards (Login, etc.) |
-| modal | `shadow-modal` | 3-layer + inset | Dialogs, dropdown menus |
+| 0 | (none) | none | Not used yet |
+| 1 | `shadow-card-1` | inset 1px hairline | Not used yet |
+| 2 | `shadow-card-2` | soft drop + inset | **Default** — settings sections, the release list |
+| 3 | `shadow-card-3` | stacked drop + inset | Not used yet |
+| 4 | `shadow-card-4` | float stack + inset | The single card of an entry screen (Login, Setup, Invite, Reset password) |
+| modal | `shadow-modal` | 3-layer + inset | **Defined, used nowhere.** Dialog and AlertDialog use Tailwind `shadow-lg`; DropdownMenu and Select content use `shadow-md` |
 
 Apply via the `level` prop on the `Card` component:
 
@@ -231,7 +231,7 @@ their count live in the spec, which the check holds to code. A component without
 |-----------|--------|------|------|
 | Button | `components/ui/button.tsx` | variant × size × state | [button.md](./design/components/button.md) |
 | Label | `components/ui/label.tsx` | hint | [label.md](./design/components/label.md) |
-| Card | `components/ui/card.tsx` | level 5 | pending |
+| Card | `components/ui/card.tsx` | level | [card.md](./design/components/card.md) |
 | Input | `components/ui/input.tsx` | state 3 × content 3 | pending |
 | Select | `components/ui/select.tsx` | size 4 × state 3 × content 2 | pending |
 | Dialog | `components/ui/dialog.tsx` | footer 2 | pending |
@@ -260,18 +260,6 @@ drawn — a designer would be drawing a screen that does not exist.
 ### Notes not yet moved into a spec
 
 These move into the component's spec file when it is written.
-
-#### Cards
-
-`components/ui/card.tsx` — elevation controlled via the `level` prop.
-
-```tsx
-<Card level={1}>  {/* flat */}
-<Card level={2}>  {/* default, can be omitted */}
-<Card level={4}>  {/* Login, primary entry screens */}
-```
-
-Composition: `CardHeader` (`p-6`) → `CardTitle` + `CardDescription` → `CardContent` (`p-6 pt-0`) → `CardFooter`.
 
 #### Inputs & Forms
 
