@@ -29,14 +29,19 @@ Content (open), 4px below the trigger
 └──────────────────────────────┘
 ```
 
+On open the highlight starts on the selected item, so the first frame has the check and the `--accent` fill on
+the same row.
+
 - **Trigger** — same box as Input: full width unless overridden, 1px `--input` border, `--background` fill,
   `rounded-md` (6px), 12px side padding. Text `text-sm` (14px) at every viewport, `--foreground`, one line
   (longer values are clipped with an ellipsis). Chevron-down 16px at 50% opacity, pinned to the right.
 - **Content** — `--popover` surface, `--popover-foreground` text, 1px `--border`, `rounded-md`, Tailwind
   `shadow-md` (not a `shadow-card-*` token). At least as wide as the trigger and never narrower than 128px; it
-  grows to fit its longest item. 4px padding inside. Opens below the trigger (above when there is no room),
-  fading and scaling in from 95%.
-- **Item** — `text-sm`, 6px top and bottom, 32px left padding (room for the check), 8px right, `rounded-sm`.
+  grows to fit its longest item, aligned to the trigger's left edge, so extra width extends to the right. 4px
+  padding inside. Opens 4px below the trigger (above when there is no room), fading in, scaling from 95% and
+  sliding 8px from the trigger's side. A list taller than the space available scrolls, with a 16px chevron
+  button at the top and bottom.
+- **Item** — `text-sm`, 6px top and bottom, 32px left padding (room for the check), 8px right, `rounded-sm` (4px).
   Always 14px, even when the trigger is set to 12px.
 - **Check** — 16px, in a 14px slot 8px from the item's left edge, only on the selected item.
 
@@ -67,19 +72,22 @@ Call-site counts are a snapshot (2026-10-18). The height always comes with a wid
 | `disabled` | 50% opacity, `not-allowed` cursor | 0 — defined, no call site disables a Select |
 
 - **No `hover`.** The trigger does not change under the pointer.
-- **The ring shows on a mouse click too.** The trigger uses `focus:`, not `focus-visible:`, and it keeps focus
-  while the list is open and after it closes.
+- **The ring shows on a mouse click too.** The trigger uses `focus:`, not `focus-visible:`. While the list is
+  open, focus is on the selected item, so the trigger shows no ring; it gets focus, and the ring, back when the
+  list closes.
 - **Open is not a trigger look.** Nothing about the trigger changes while the list is open — the chevron does
-  not turn. Draw the open state as the trigger with the ring plus the content below it.
+  not turn. Draw the open state as the trigger at `default` (no ring) plus the content, with the selected item
+  highlighted.
 - **Pressed moves it 1px.** The trigger is a `<button>` with `role="combobox"` and no `aria-haspopup`, so the
   global press motion applies (DESIGN.md).
-- **No `error`.** The invite role trigger sets `aria-invalid` on a failed submit, and nothing styles it.
+- **No `error`.** The invite role trigger wires `aria-invalid`, which cannot be true today (the role defaults to
+  QA), and nothing styles it.
 
 ### `content`
 
 | Value | Looks like | Call sites |
 |-------|------------|-----------:|
-| `value` | The selected item's text, `--foreground` | 11 |
+| `value` | The selected item's content, `--foreground` — the build row's `none` shows its item's muted `—` | 11 |
 | `placeholder` | Placeholder text, `--muted-foreground` | 0 — every Select starts with a value |
 
 Every Select is given a value before it renders: a form default, `'none'`, or an "All / Any" item. App Center's
@@ -94,7 +102,7 @@ Items are not a separate component in Figma terms, but they have their own looks
 | State | Looks like | Notes |
 |-------|------------|-------|
 | `default` | `--popover-foreground` text, no fill | |
-| `highlighted` | `--accent` fill, `--accent-foreground` text | Pointer over it or arrow-key focus — the same look, because Radix moves focus to the item under the pointer |
+| `highlighted` | `--accent` fill, `--accent-foreground` text | Mouse over it or arrow-key focus — the same look, because Radix moves focus to the item under the mouse. On open it starts on the selected item; moving the mouse off the items clears it |
 | `selected` | Check on the left | Can be highlighted at the same time |
 | `disabled` | 50% opacity, not clickable | 0 call sites |
 
