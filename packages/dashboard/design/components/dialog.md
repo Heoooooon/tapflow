@@ -27,12 +27,11 @@ its buttons, not a prop. A confirmation that asks "are you sure?" is `AlertDialo
   24px padding on every side
 ```
 
-- **Overlay** — black at 80% over the whole page, in both themes. Appears instantly.
+- **Overlay** — black at 80% over the whole page, in both themes. Fades in and out over 150ms.
 - **Panel** — `--background` fill (not `--card` or `--popover`), 1px `--border`, `rounded-lg` (8px), Tailwind
   `shadow-lg` (not a `shadow-card-*` token), 24px padding. Centered in the viewport. Children are stacked
-  16px apart (`grid gap-4`). **It appears and disappears instantly.** The `animate-in` / `fade-*` / `zoom-*` /
-  `slide-*` classes in the source come from shadcn and need the `tailwindcss-animate` plugin, which is not
-  installed (`plugins: []` in `tailwind.config.ts`), so they produce no CSS. Do not prototype an open animation.
+  16px apart (`grid gap-4`). Opens and closes in 150ms: fades and scales between 95% and 100%, with no slide
+  (`tailwindcss-animate`, #984). With the OS set to reduce motion it appears and disappears instantly.
 - **Title** — `text-lg` (18px) `font-semibold leading-none tracking-tight`, `--foreground`. Required on every
   dialog; the deeplink bar hides it visually (`sr-only`).
 - **Description** (optional) — `text-sm`, `--muted-foreground`. 2 of 7 dialogs.
@@ -95,7 +94,7 @@ the panel.
 
 ## Dialog vs AlertDialog
 
-They share the panel, overlay and width. What differs:
+They share the panel, overlay, width and motion. What differs:
 
 | | Dialog | AlertDialog |
 |---|---|---|
