@@ -146,8 +146,8 @@ describe('Team — the invite link a teammate gets', () => {
     expect(toast.error).toHaveBeenCalledWith('Failed to create invite link')
   })
 
-  // Done closes through a state setter, which a controlled Radix dialog does not report through
-  // onOpenChange — so without routing it through the reset, the next open showed the last invite.
+  // The dialog clears on the way in (the trigger's onOpenChange(true)), not on close, so it stays unchanged
+  // while it animates out. Removing that reset would reopen on the last invite.
   it('opens on a fresh form after Done, not on the previous invite or its status', async () => {
     stubClipboard(vi.fn(async (_text: string) => {}))
     stubFetch({ token: 't', emailSent: false, inviteUrl: 'http://192.168.219.113:4000/invite?token=t' })

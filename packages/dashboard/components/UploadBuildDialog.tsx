@@ -60,7 +60,7 @@ export function UploadBuildDialog({ onSuccess, appId, canWrite }: Props) {
   function handleOpenChange(next: boolean) {
     setOpen(next)
     // Cleared on the way in, not on the way out: a closing dialog stays on screen through its exit animation,
-    // and clearing it then showed the empty drop zone fading out in place of what was just issued.
+    // and clearing it then showed the empty drop zone fading out in place of the file just chosen.
     if (next) { setFile(null); setStatusLabel('none') }
   }
 
