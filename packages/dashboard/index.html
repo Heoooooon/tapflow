@@ -11,7 +11,9 @@
       // app has no server render. Mirrors main.tsx's ThemeProvider: `class` attribute, default `system`, next-themes'
       // default `theme` storage key; it takes over on mount.
       try {
-        var t = localStorage.getItem('theme')
+        var t = null
+        // Storage can throw (blocked site data); fall back to the system theme, as next-themes does.
+        try { t = localStorage.getItem('theme') } catch (e) {}
         var dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.classList.add(dark ? 'dark' : 'light')
         document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
