@@ -3789,7 +3789,7 @@ describe('IOSAgent', () => {
 
     // `tapflow flow run` and the MCP server send `device:boot` for a device that is already running, on
     // every run. Each boot used to stand up a new capture over the old one: an orphaned audiotap-helper
-    // and one more 1.5s poll per run, until the agent slowed to a halt.
+    // and one more 1.5s poll per run.
     it('re-booting a running device stops the previous capture and leaves one audio poll', async () => {
       const setSpy = vi.spyOn(globalThis, 'setInterval')
       const clearSpy = vi.spyOn(globalThis, 'clearInterval')
