@@ -238,9 +238,9 @@ export function TokenSettings() {
                     </SelectContent>
                   </Select>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <div className="text-xs text-muted-foreground">
                   Scope: <Badge variant="secondary">{tokenType === 'agent' ? 'agent' : 'view, builds:write'}</Badge>
-                </p>
+                </div>
                 <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Creating…' : 'Create token'}</Button>
                 <FormErrorCount errors={errors} submitCount={submitCount} />
               </form>
