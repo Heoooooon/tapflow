@@ -73,8 +73,8 @@ the same for every variant and are defined once in DESIGN.md.
 
 **Pressed is motion, not a state.** A Button that is not `disabled` moves down 1px while pressed
 (`translateY(1px)`, 120ms) and its colors do not change, so there is no `pressed` variant to draw. The rule
-is global in `src/index.css`. It skips DropdownMenu triggers (`aria-haspopup`), because the shift glitches
-when the menu opens, and a Button rendered `asChild` as a link, which is not a `<button>`.
+is global in `src/index.css`. It skips any trigger that opens an overlay (`aria-haspopup` — DropdownMenu, Dialog
+and AlertDialog triggers, so "Upload build" does not move), because the shift glitches when the overlay opens, and a Button rendered `asChild` as a link, which is not a `<button>`.
 
 Only `disabled:` is styled. A button that is busy but must keep focus uses `aria-disabled` and dims itself
 with `aria-disabled:` classes at the call site, because a focused element that becomes `disabled` loses

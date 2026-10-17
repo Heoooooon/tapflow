@@ -201,8 +201,8 @@ Every interactive component uses the same state names. A component spec lists on
   }
   ```
 
-  Elements with `aria-haspopup` (DropdownMenu triggers) are excluded, because the shift glitches when the
-  overlay opens. A Select trigger has `role="combobox"` and no `aria-haspopup`, so it does shift. A `Button`
+  Elements with `aria-haspopup` — any trigger that opens an overlay, such as DropdownMenu, Dialog and
+  AlertDialog triggers — are excluded, because the shift glitches when the overlay opens. A Select trigger has `role="combobox"` and no `aria-haspopup`, so it does shift. A `Button`
   rendered `asChild` as a link does not, since it is neither a `<button>` nor `role="button"`.
 - **The ring is not the same everywhere.** `SidebarMenuButton` uses `--sidebar-ring` (link blue) with no offset,
   and `SelectTrigger` uses `focus:` rather than `focus-visible:`, so a mouse click shows its ring too.
@@ -308,7 +308,7 @@ The placeholder color is determined by `avatarColors(name)`.
 
 #### Theme Toggle
 
-`components/ThemeToggle.tsx` — based on `next-themes` `useTheme`. A `ghost` / `icon` Button that flips between light and dark; it has no system state.
+`components/ThemeToggle.tsx` — based on `next-themes` `useTheme`. A `ghost` / `icon` Button with two icons. It starts on `system` (`defaultTheme` in `src/main.tsx`), and a click only ever sets light or dark — from `system` the first click sets dark.
 
 ## Do's and Don'ts
 
