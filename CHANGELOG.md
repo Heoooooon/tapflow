@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Long dashboard pages no longer scroll the whole window.** On Settings → Default and other long forms the window grew a second scrollbar and the header could scroll out of view, because a screen-reader-only status line near the bottom of a form was stretching the page. Only the page area scrolls now.
+
 - **The dashboard no longer flashes light before switching to dark mode.** With dark mode set, or the system theme dark, each page load first painted light while the app loaded. The theme is now applied before the first paint.
 
 - **Re-booting a running iOS simulator no longer leaves an audio helper behind.** `tapflow flow run` and the MCP server boot the device on every run or connect, and the dashboard does the same when a tester re-selects a running simulator. Each boot started audio capture without stopping the previous one, leaving an `audiotap-helper` process and a 1.5-second poll running each time. A boot now stops the previous capture first.
