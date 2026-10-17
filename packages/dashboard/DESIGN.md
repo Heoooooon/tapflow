@@ -206,7 +206,8 @@ Every interactive component uses the same state names. A component spec lists on
   AlertDialog triggers — are excluded, because the shift glitches when the overlay opens. A Select trigger has `role="combobox"` and no `aria-haspopup`, so it does shift. A `Button`
   rendered `asChild` as a link does not, since it is neither a `<button>` nor `role="button"`.
 - **The ring is not the same everywhere.** `SidebarMenuButton` uses `--sidebar-ring` (link blue) with no offset,
-  and `SelectTrigger` uses `focus:` rather than `focus-visible:`, so a mouse click shows its ring too.
+  and `SelectTrigger` uses `focus:` rather than `focus-visible:`, so a mouse click shows its ring too. A text `Input`
+  shows it on a click as well: browsers match `:focus-visible` on any focused text field (see [input.md](./design/components/input.md)).
   Read the component's base classes rather than assuming the shared ring.
 - **A disabled field is shown by its control alone.** `Label` carries `peer-disabled:opacity-70`, but no call site
   puts a `peer` control before its label, so it never applies. See [label.md](./design/components/label.md).
@@ -232,7 +233,7 @@ their count live in the spec, which the check holds to code. A component without
 | Button | `components/ui/button.tsx` | variant × size × state | [button.md](./design/components/button.md) |
 | Label | `components/ui/label.tsx` | hint | [label.md](./design/components/label.md) |
 | Card | `components/ui/card.tsx` | level | [card.md](./design/components/card.md) |
-| Input | `components/ui/input.tsx` | state 3 × content 3 | pending |
+| Input | `components/ui/input.tsx` | state 3 × content 3 | [input.md](./design/components/input.md) |
 | Select | `components/ui/select.tsx` | size 4 × state 3 × content 2 | pending |
 | Dialog | `components/ui/dialog.tsx` | footer 2 | pending |
 | Separator | `components/ui/separator.tsx` | orientation 2 | pending |
@@ -260,12 +261,6 @@ drawn — a designer would be drawing a screen that does not exist.
 ### Notes not yet moved into a spec
 
 These move into the component's spec file when it is written.
-
-#### Inputs & Forms
-
-`components/ui/input.tsx` — `h-10 rounded-md border border-input bg-background`. shadcn default.
-
-File upload: use the **overlay pencil button on the current image** pattern instead of a "Choose file" button. Trigger the hidden `<input type="file">` via `fileInputRef.current.click()`. Update the preview immediately on selection with `URL.createObjectURL`.
 
 #### Navigation (Sidebar)
 

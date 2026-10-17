@@ -71,7 +71,7 @@ function CopyableLink({ link, copied, noun }: { link: string; copied: boolean; n
   return (
     <>
       <p id={labelId} className="text-sm text-muted-foreground">{copied ? `${noun[0].toUpperCase()}${noun.slice(1)} copied to clipboard:` : `Copy this ${noun}:`}</p>
-      <Input ref={ref} readOnly value={link} aria-labelledby={labelId} onFocus={(e) => e.currentTarget.select()} className="font-mono text-xs" />
+      <Input ref={ref} readOnly value={link} aria-labelledby={labelId} onFocus={(e) => e.currentTarget.select()} className="font-mono" />
     </>
   )
 }
