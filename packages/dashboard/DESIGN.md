@@ -239,7 +239,7 @@ their count live in the spec, which the check holds to code. A component without
 | Separator | `components/ui/separator.tsx` | orientation 2 | [separator.md](./design/components/separator.md) |
 | Badge | `components/ui/badge.tsx` | variant 10 (variant 4 + tone 6) | [badge.md](./design/components/badge.md) |
 | AlertDialog | `components/ui/alert-dialog.tsx` | — | [alert-dialog.md](./design/components/alert-dialog.md) |
-| Tooltip | `components/ui/tooltip.tsx` | — | pending |
+| Tooltip | `components/ui/tooltip.tsx` | — | [tooltip.md](./design/components/tooltip.md) |
 | TechLabel | `components/ui/tech-label.tsx` | tone 2 | pending |
 | TabsTrigger | `components/ui/tabs.tsx` | state 4 | pending |
 | SidebarMenuButton | `components/ui/sidebar.tsx` | variant 2 × size 3 × state 5 | pending |
