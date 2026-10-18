@@ -93,7 +93,7 @@ Only two typefaces are used.
 | Role | Family | Fallback |
 |------|--------|----------|
 | Default sans-serif | Inter (400/500/600) | `ui-sans-serif, system-ui, sans-serif` |
-| Monospace | JetBrains Mono (400) | `ui-monospace, SFMono-Regular, monospace` |
+| Monospace | JetBrains Mono (variable; 400, and 500 where the parent is medium) | `ui-monospace, SFMono-Regular, monospace` |
 
 `font-feature-settings: 'ss01', 'ss02'` is applied globally on `body` to enable Inter's geometric alternate glyphs.
 
@@ -240,7 +240,7 @@ their count live in the spec, which the check holds to code. A component without
 | Badge | `components/ui/badge.tsx` | variant 10 (variant 4 + tone 6) | [badge.md](./design/components/badge.md) |
 | AlertDialog | `components/ui/alert-dialog.tsx` | — | [alert-dialog.md](./design/components/alert-dialog.md) |
 | Tooltip | `components/ui/tooltip.tsx` | — | [tooltip.md](./design/components/tooltip.md) |
-| TechLabel | `components/ui/tech-label.tsx` | tone 2 | pending |
+| TechLabel | `components/ui/tech-label.tsx` | tone 2 | [tech-label.md](./design/components/tech-label.md) |
 | TabsTrigger | `components/ui/tabs.tsx` | state 4 | pending |
 | SidebarMenuButton | `components/ui/sidebar.tsx` | variant 2 × size 3 × state 5 | pending |
 | DropdownMenuItem | `components/ui/dropdown-menu.tsx` | state 3 | pending |
