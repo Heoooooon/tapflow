@@ -238,7 +238,7 @@ their count live in the spec, which the check holds to code. A component without
 | Dialog | `components/ui/dialog.tsx` | footer 2 | [dialog.md](./design/components/dialog.md) |
 | Separator | `components/ui/separator.tsx` | orientation 2 | [separator.md](./design/components/separator.md) |
 | Badge | `components/ui/badge.tsx` | variant 10 (variant 4 + tone 6) | [badge.md](./design/components/badge.md) |
-| AlertDialog | `components/ui/alert-dialog.tsx` | — | pending |
+| AlertDialog | `components/ui/alert-dialog.tsx` | — | [alert-dialog.md](./design/components/alert-dialog.md) |
 | Tooltip | `components/ui/tooltip.tsx` | — | pending |
 | TechLabel | `components/ui/tech-label.tsx` | tone 2 | pending |
 | TabsTrigger | `components/ui/tabs.tsx` | state 4 | pending |
