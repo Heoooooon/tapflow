@@ -56,3 +56,17 @@ describe('QASession — a device an AI agent is driving', () => {
     expect(screen.getByRole('button', { name: /iPhone SE/ }).textContent).toContain('In use')
   })
 })
+
+describe('QASession — no agent for the build', () => {
+  // The platform arrives lowercase; the sentence names it the way the platform does.
+  it('names the platform as iOS', async () => {
+    render(withQuery(
+      <MemoryRouter initialEntries={['/qa?id=7']}>
+        <BreadcrumbProvider><QASession /></BreadcrumbProvider>
+      </MemoryRouter>,
+    ))
+    await vi.waitFor(() => expect(deliver).not.toBeNull())
+    await act(async () => { deliver!({ type: 'agents:listed', sessions: [] }) })
+    expect(await screen.findByText('No agents available for iOS.', { exact: true })).toBeTruthy()
+  })
+})

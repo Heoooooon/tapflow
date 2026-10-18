@@ -58,8 +58,6 @@ describe('Default settings — what it loads', () => {
     expect(await screen.findByDisplayValue('Coffee')).toBeInTheDocument()
   })
 
-  // QA manages apps like Developer; Viewer is the one role that does not.
-  // Mutation: drop 'QA' from `canEditApps` → this fails; the Viewer twin below holds the other side.
   // `platform` arrives lowercase; the badge names it the way the platform does ("Ios" was CSS `capitalize`).
   it('names the platform of each app', async () => {
     auth.user = user('Developer')
@@ -67,6 +65,8 @@ describe('Default settings — what it loads', () => {
     expect(await screen.findByText('iOS', { exact: true })).toBeInTheDocument()
   })
 
+  // QA manages apps like Developer; Viewer is the one role that does not.
+  // Mutation: drop 'QA' from `canEditApps` → this fails; the Viewer twin below holds the other side.
   it('lists the apps for QA', async () => {
     auth.user = user('QA')
     renderPage()

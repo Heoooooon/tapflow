@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Platform badges say iOS, not Ios.** App Center's build rows and Settings → Apps now name the platform `iOS`, `Android` or `Both`.
+- **Platform badges say iOS, not Ios.** App Center's build rows, Settings → Apps and the QA session's "No agents available" line now name the platform `iOS`, `Android` or `Both`.
 
 - **Long dashboard pages no longer scroll the whole window.** On Settings → Default and other long forms the window grew a second scrollbar and the header could scroll out of view, because a screen-reader-only status line near the bottom of a form was stretching the page. Only the page area scrolls now.
 
