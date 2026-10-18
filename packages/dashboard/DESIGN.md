@@ -168,12 +168,12 @@ Apply via the `level` prop on the `Card` component:
 
 | Tailwind class | Value | Use |
 |----------------|-------|-----|
-| `rounded-sm` | 4px | Badges, tight inset elements |
+| `rounded-sm` | 4px | Menu and select items, tab triggers, Kbd, dialog and sheet close buttons, tight inset elements |
 | `rounded-md` | 6px | Form inputs, nav buttons, dropdowns |
 | `rounded-lg` | 8px | Cards (`--radius` default) |
 | `rounded-pill` | 100px | Marketing-scale CTA buttons |
 | `rounded-pill-sm` | 64px | Tab ghost pills |
-| `rounded-full` | 9999px | Icon buttons, avatars |
+| `rounded-full` | 9999px | Icon buttons, avatars, badges |
 
 ## States
 
@@ -237,7 +237,7 @@ their count live in the spec, which the check holds to code. A component without
 | Select | `components/ui/select.tsx` | size 4 × state 3 × content 2 | [select.md](./design/components/select.md) |
 | Dialog | `components/ui/dialog.tsx` | footer 2 | [dialog.md](./design/components/dialog.md) |
 | Separator | `components/ui/separator.tsx` | orientation 2 | [separator.md](./design/components/separator.md) |
-| Badge | `components/ui/badge.tsx` | variant 10 (variant 4 + tone 6) | pending |
+| Badge | `components/ui/badge.tsx` | variant 10 (variant 4 + tone 6) | [badge.md](./design/components/badge.md) |
 | AlertDialog | `components/ui/alert-dialog.tsx` | — | pending |
 | Tooltip | `components/ui/tooltip.tsx` | — | pending |
 | TechLabel | `components/ui/tech-label.tsx` | tone 2 | pending |
