@@ -11,8 +11,9 @@ own: content
 > This file holds only what is specific to Tooltip.
 
 `components/ui/tooltip.tsx` wraps Radix Tooltip and has no `cva`. `content` below is what the call site puts
-inside, not a prop. A tooltip names or explains the control under it. It is never the
-only place something is said: every trigger carries its own `aria-label` or description.
+inside, not a prop. A tooltip names or explains the control under it, and should never be
+the only place something is said: every trigger but one carries its own `aria-label` or description. The
+exception is the overloaded Mac card, whose reason exists only in its tooltip (see Usage; tracked in #979).
 
 ## Anatomy
 
