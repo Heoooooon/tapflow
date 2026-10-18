@@ -24,7 +24,7 @@ import {
   BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
 import { cn } from '@/lib/utils';
-import { STATUS_TONE, buildLabel } from '@/lib/build-format';
+import { PLATFORM_LABEL, STATUS_TONE, buildLabel } from '@/lib/build-format';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -319,7 +319,7 @@ export function QASession() {
 
               {agentGroups.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  {connected ? `No agents available for ${os}.` : 'Connecting to relay…'}
+                  {connected ? `No agents available for ${PLATFORM_LABEL[os]}.` : 'Connecting to relay…'}
                 </p>
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-2">

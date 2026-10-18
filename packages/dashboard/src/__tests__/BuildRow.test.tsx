@@ -141,3 +141,12 @@ describe('BuildRow — Viewer (canWrite false)', () => {
     expect(screen.getByRole('button', { name: 'Cancel scheduled deletion of ios build 1, 1.0.0' })).toBeTruthy()
   })
 })
+
+// The platform comes from the API in lowercase. CSS `capitalize` used to dress it up, which drew "Ios".
+describe('BuildRow — platform badge', () => {
+  it.each([['ios', 'iOS'], ['android', 'Android']] as const)('%s reads %s', (platform, label) => {
+    renderRow(makeBuild({ platform }))
+    expect(screen.getByText(label, { exact: true })).toBeTruthy()
+    cleanup()
+  })
+})

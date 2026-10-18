@@ -14,6 +14,7 @@ import { FieldHint } from '@/components/ui/field-hint'
 import { PASSWORD_HINT, PASSWORD_MIN_LENGTH, PASSWORD_TOO_SHORT, describedBy } from '@/lib/password'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { PLATFORM_LABEL } from '@/lib/build-format'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -361,9 +362,8 @@ export function DefaultSettings() {
                       <Badge
                         tone={app.platform === 'ios' ? 'ios' : app.platform === 'android' ? 'android' : undefined}
                         variant={app.platform === 'both' ? 'secondary' : undefined}
-                        className="capitalize"
                       >
-                        {app.platform}
+                        {PLATFORM_LABEL[app.platform]}
                       </Badge>
                     </div>
                     <div className="flex items-center justify-end gap-2">
