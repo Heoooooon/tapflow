@@ -56,8 +56,10 @@ These are `className` overrides, not props.
 On the AI session page the line shows only from 1024px up (`hidden lg:block`). Below that the panel stacks
 under the content and there is no line between them, only the 24px gap.
 
-A short vertical line is about as tall as the text beside it (12px beside 12px text) and half the height of the
-buttons beside it (16px beside the header's 32px buttons). It never runs the full height of its row. The 14px
+The short lines — header, build row, info card — are about as tall as the text beside them (12px beside 12px
+text) and half the height of the buttons beside them (16px beside the header's 32px buttons); they stop short of
+the row's edges. The two-column dividers on the QA and AI session pages are the exception and run the row's full
+height. The 14px
 and 12px gaps in the build row and the info card are off the 4px/8px scale as written; draw them as they are,
 not rounded.
 
