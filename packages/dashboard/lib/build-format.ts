@@ -1,4 +1,4 @@
-import type { Build } from '@/lib/types'
+import type { App, Build } from '@/lib/types'
 
 export const STATUS_TONE = {
   Backlog:       'backlog',
@@ -6,6 +6,13 @@ export const STATUS_TONE = {
   Done:          'done',
   Rejected:      'rejected',
 } as const satisfies Record<string, 'backlog' | 'progress' | 'done' | 'rejected'>
+
+/** How a platform is named on screen. The API value is lowercase, and CSS `capitalize` would make it "Ios". */
+export const PLATFORM_LABEL = {
+  ios: 'iOS',
+  android: 'Android',
+  both: 'Both',
+} as const satisfies Record<App['platform'], string>
 
 export function buildLabel(build: Build): string {
   if (build.version_name && build.build_number) return `${build.version_name} · build ${build.build_number}`
