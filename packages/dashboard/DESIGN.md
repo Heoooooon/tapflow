@@ -172,7 +172,7 @@ Apply via the `level` prop on the `Card` component:
 | `rounded-md` | 6px | Form inputs, nav buttons, dropdowns |
 | `rounded-lg` | 8px | Cards (`--radius` default) |
 | `rounded-pill` | 100px | Marketing-scale CTA buttons |
-| `rounded-pill-sm` | 64px | Tab ghost pills |
+| `rounded-pill-sm` | 64px | **Defined, used nowhere.** Tabs are a segmented control (`rounded-md` list, `rounded-sm` triggers) |
 | `rounded-full` | 9999px | Icon buttons, avatars, badges |
 
 ## States
@@ -241,7 +241,7 @@ their count live in the spec, which the check holds to code. A component without
 | AlertDialog | `components/ui/alert-dialog.tsx` | — | [alert-dialog.md](./design/components/alert-dialog.md) |
 | Tooltip | `components/ui/tooltip.tsx` | — | [tooltip.md](./design/components/tooltip.md) |
 | TechLabel | `components/ui/tech-label.tsx` | tone 2 | [tech-label.md](./design/components/tech-label.md) |
-| TabsTrigger | `components/ui/tabs.tsx` | state 4 | pending |
+| TabsTrigger | `components/ui/tabs.tsx` | state 4 | [tabs-trigger.md](./design/components/tabs-trigger.md) |
 | SidebarMenuButton | `components/ui/sidebar.tsx` | variant 2 × size 3 × state 5 | pending |
 | DropdownMenuItem | `components/ui/dropdown-menu.tsx` | state 3 | pending |
 | Kbd | `components/ui/kbd.tsx` | — | pending |

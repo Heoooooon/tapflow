@@ -65,7 +65,7 @@ const config: Config = {
         md: 'calc(var(--radius) - 2px)', /* 6px  — nav/form          */
         sm: 'calc(var(--radius) - 4px)', /* 4px  — tight inset       */
         pill: '100px',                   /* marketing CTA            */
-        'pill-sm': '64px',               /* tab ghost pill           */
+        'pill-sm': '64px',               /* unused                   */
       },
       boxShadow: {
         /* DESIGN.md elevation levels — stacked small offsets + inset hairline */
