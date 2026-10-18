@@ -695,7 +695,7 @@ export class RelayServer {
       })
       // Bind dual-stack (IPv4 + IPv6). A bare listen(port) binds IPv6-only on some
       // macOS/node setups, so LAN agents connecting over IPv4 (ws://<ipv4>:port) time out.
-      this.httpServer.listen({ port: this.options.port, host: '::', ipv6Only: false }, () => resolve())
+      this.httpServer.listen({ port: this.options.port, host: process.env.TAPFLOW_BIND_HOST || '::', ipv6Only: false }, () => resolve())
     }).then(() => this.listenTunnel())
   }
 
